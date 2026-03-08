@@ -249,25 +249,6 @@ path = generate(poses=poses, output_dir="./output", mgrs="33TWN", width=2.0)
 - MGRS to WGS84 conversion may produce jagged lanes; post-process in Vector Map Builder for refinement.
 - Requires `autoware_adapi_v1_msgs` for the route service node.
 
-## Changes in v0.2.0
-
-The following issues from v0.1.0 have been resolved:
-
-- **Standalone Python support**: Replaced `tf_transformations` (ROS) with pure numpy quaternion math. Bag reader imports are deferred. `pip install lanelet2_generator` now works without ROS for CSV/PLY inputs.
-- **Removed `np.float` monkey-patch**: No longer needed since `tf_transformations` is no longer imported.
-- **Removed hardcoded `poses[::10]`**: Bag inputs now go through the same `load_path()` + `filter_path()` pipeline as CSV/PLY. The `step` and `min_distance` parameters work for all input formats.
-- **Fixed service topic name**: Node now registers on `/api/routing/set_route_points` (matching the Autoware ADAPI convention) and the log message matches.
-- **Vectorized geometry**: `pose2line()`, yaw extraction, and CSV reading are now fully vectorized numpy operations (no per-point Python loops).
-- **O(n) segment splitting**: `split_segments()` uses precomputed cumulative distances and binary search instead of O(n^2) backward walks.
-- **Sub-meter coordinate precision**: `LaneletMap` now caches a single `Transformer` per map and computes lat/lon from float UTM coordinates instead of truncated integer MGRS strings.
-- **Fixed MGRS northing cycle**: Improved the latitude band cycle calculation to produce correct absolute coordinates for common MGRS codes.
-- **Consistent MGRS defaults**: All components default to `"33TWN"`.
-- **Always keep last point**: `filter_by_min_distance()` and `filter_downsample()` now always preserve the path endpoint.
-- **Input validation**: CSV reader validates column count; PLY reader validates vertex properties with clear error messages.
-- **Simplified `generate()`**: Single code path for all inputs; validates `output_dir` before any I/O.
-- **Removed unused code**: `save_osm()` wrapper, unused `ResponseStatus` import, dead `scripts/` entry point.
-- **Removed `transforms3d` dependency**: The library now only needs `numpy`, `pyproj`, and `plyfile`.
-
 
 ## License
 
