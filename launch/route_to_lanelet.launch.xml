@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <arg name="output_path" default="/tmp/lanelet_maps" description="Directory where generated lanelet2 .osm files are saved" />
+  <arg name="mgrs" default="33TWN" description="MGRS code" />
+  <arg name="width" default="2.0" description="Lane width [m]" />
+  <arg name="speed_limit" default="30" description="Speed limit [km/h]" />
+  <arg name="min_distance" default="" description="Min distance between points [m]" />
+  <arg name="step" default="1" description="Downsample step" />
+  <arg name="split_distance" default="500" description="Split every M meters" />
+  <arg name="split_direction_deg" default="" description="Split on direction change [deg]" />
+  <arg name="split_direction_window_m" default="" description="Direction change window [m]" />
+
+  <node pkg="lanelet2_generator" exec="route_to_lanelet_node" name="route_to_lanelet_node" output="screen">
+    <param name="output_path" value="$(var output_path)" />
+    <param name="mgrs" value="$(var mgrs)" />
+    <param name="width" value="$(var width)" />
+    <param name="speed_limit" value="$(var speed_limit)" />
+    <param name="min_distance" value="$(var min_distance)" />
+    <param name="step" value="$(var step)" />
+    <param name="split_distance" value="$(var split_distance)" />
+    <param name="split_direction_deg" value="$(var split_direction_deg)" />
+    <param name="split_direction_window_m" value="$(var split_direction_window_m)" />
+  </node>
+</launch>

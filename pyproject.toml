@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lanelet2_generator"
+version = "0.2.0"
+description = "Generate Lanelet2 maps from path data (CSV, PLY, MCAP, sqlite3)"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.20,<3",
+    "pyproj",
+    "plyfile",
+]
+
+[project.optional-dependencies]
+ros = [
+    "rclpy",
+    "rosbag2_py",
+]
+
+[project.scripts]
+lanelet2_generator = "lanelet2_generator.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lanelet2_generator"]
