@@ -6,94 +6,118 @@ This package is based on [bag2lanelet](https://github.com/autowarefoundation/aut
 
 ## Architecture
 
+### Package Layout
+
+```
+lanelet2_generator/
+├── lanelet2_generator/               # Plain Python library (no ROS)
+│   ├── __init__.py                   #   generate() entry point, lazy read_bag import
+│   ├── cli.py                        #   CLI: argparse → generate()
+│   ├── readers/
+│   │   ├── base.py                   #   load_path() — dispatches by file extension
+│   │   ├── csv.py                    #   read_csv() — vectorized yaw→quaternion
+│   │   ├── ply.py                    #   read_ply() — with input validation
+│   │   └── bag.py                    #   read_bag() — lazily imported (requires ROS)
+│   ├── filtering/
+│   │   └── path.py                   #   filter_path(), min_distance, downsample
+│   ├── geometry/
+│   │   └── path.py                   #   pose2line() vectorized, split_segments() O(n)
+│   └── lanelet/
+│       └── builder.py                #   LaneletMap, to_lanelet(), cached Transformer
+├── lanelet2_generator_node/          # ROS 2 node (only ROS component)
+│   └── route_to_lanelet_node.py      #   /api/routing/set_route_points service
+├── launch/
+│   └── route_to_lanelet.launch.xml
+├── sample_data/
+├── CMakeLists.txt
+├── package.xml
+├── pyproject.toml
+└── requirements.txt
+```
+
+### Data Flow
+
 ```mermaid
-flowchart TD
-    subgraph entryPoints [Entry Points]
-        CLI["CLI\n(plain Python)"]
-        Node["ROS 2 Node\n(route_to_lanelet_node)"]
-    end
-
+flowchart LR
     subgraph inputs [Input Sources]
-        CSV[CSV]
-        PLY[PLY]
-        MCAP[MCAP]
-        BAG["sqlite3\nrosbag2"]
-        SVC["SetRoutePoints\nService Call"]
+        CSV[".csv"]
+        PLY[".ply"]
+        MCAP[".mcap"]
+        BAG["rosbag2 dir"]
+        SVC["SetRoutePoints"]
     end
 
-    subgraph lib ["lanelet2_generator (plain Python library)"]
-        subgraph readers [readers/]
-            LoadPath["load_path()"]
-            ReadCSV["read_csv()"]
-            ReadPLY["read_ply()"]
-            ReadBag["read_bag()"]
-        end
-
-        subgraph filtering [filtering/]
-            FilterPath["filter_path()"]
-            MinDist["filter_by_min_distance()"]
-            Downsample["filter_downsample()"]
-        end
-
-        subgraph geometry [geometry/]
-            Pose2Line["pose2line()"]
-            SplitSeg["split_segments()"]
-        end
-
-        subgraph lanelet [lanelet/]
-            ToLanelet["to_lanelet()"]
-            LaneletMap["LaneletMap"]
-            MGRS["mgrs_to_wgs()"]
-        end
-
-        Generate["generate()"]
+    subgraph entry [Entry Points]
+        CLI["CLI\n(plain Python)"]
+        Node["ROS 2 Node"]
     end
 
-    subgraph output [Output]
-        OSM[".osm file\n(Lanelet2)"]
+    subgraph pipeline ["generate() — unified pipeline"]
+        direction LR
+        LP["load_path()"]
+        FP["filter_path()"]
+        TL["to_lanelet()"]
     end
 
-    CSV --> ReadCSV
-    PLY --> ReadPLY
-    MCAP --> ReadBag
-    BAG --> ReadBag
+    subgraph lp_detail ["load_path() dispatch"]
+        ReadCSV["read_csv()\nnumpy vectorized"]
+        ReadPLY["read_ply()\nplyfile + validation"]
+        ReadBag["read_bag()\nlazy import, requires ROS"]
+    end
+
+    subgraph fp_detail ["filter_path()"]
+        DS["filter_downsample()"]
+        MD["filter_by_min_distance()\npreserves last point"]
+    end
+
+    subgraph tl_detail ["to_lanelet()"]
+        P2L["pose2line()\nvectorized rotation matrix"]
+        SS["split_segments()\ncumulative dist + searchsorted"]
+        LM["LaneletMap\ncached Transformer\nsub-meter precision"]
+    end
+
+    OSM[".osm\nLanelet2"]
+
+    CSV --> CLI
+    PLY --> CLI
+    MCAP --> CLI
+    BAG --> CLI
     SVC --> Node
 
-    CLI --> Generate
-    Node --> Generate
+    CLI --> LP
+    Node --> LP
 
-    LoadPath --> ReadCSV
-    LoadPath --> ReadPLY
-    LoadPath --> ReadBag
+    LP --> ReadCSV
+    LP --> ReadPLY
+    LP -.-> ReadBag
 
-    Generate --> LoadPath
-    Generate --> FilterPath
-    FilterPath --> MinDist
-    FilterPath --> Downsample
-    Generate --> ToLanelet
-    ToLanelet --> Pose2Line
-    ToLanelet --> SplitSeg
-    ToLanelet --> LaneletMap
-    LaneletMap --> MGRS
-    LaneletMap --> OSM
+    ReadCSV --> FP
+    ReadPLY --> FP
+    ReadBag --> FP
+
+    FP --> DS --> MD
+
+    MD --> TL
+
+    TL --> P2L --> SS --> LM --> OSM
 ```
 
 ### Component Overview
 
-| Component | Type | Description |
-|-----------|------|-------------|
-| **Library** | Plain Python | `import lanelet2_generator` — no ROS dependency |
-| **CLI** | Plain Python | `python -m lanelet2_generator.cli` or `lanelet2_generator` (pip) |
-| **ROS Node** | ROS 2 only | `route_to_lanelet_node` — SetRoutePoints service |
+| Component | Type | Dependencies | Description |
+|-----------|------|--------------|-------------|
+| **Library** | Plain Python | numpy, pyproj, plyfile | `import lanelet2_generator` — works without ROS |
+| **CLI** | Plain Python | library only | `python -m lanelet2_generator.cli` or `lanelet2_generator` (pip) |
+| **Bag reader** | Plain Python | rclpy, rosbag2_py | Lazily imported only when reading .mcap or rosbag2 dirs |
+| **ROS Node** | ROS 2 | library + autoware_adapi_v1_msgs | `/api/routing/set_route_points` service |
 
-### Data Flow
+### Pipeline
 
-All inputs produce an `(N, 7)` pose array `[x, y, z, qx, qy, qz, qw]` that flows through:
+All inputs produce an `(N, 7)` pose array `[x, y, z, qx, qy, qz, qw]` that flows through a single unified pipeline:
 
-1. **Readers** — parse input format into normalized poses
-2. **Filtering** — reduce point density (downsample, min distance)
-3. **Geometry** — compute left/right/center boundary lines, determine split points
-4. **Lanelet** — build OSM XML with nodes, ways, relations; convert MGRS to WGS84
+1. **`load_path()`** — dispatches by file extension to `read_csv()`, `read_ply()`, or `read_bag()` (lazy)
+2. **`filter_path()`** — downsample (keep every Nth point), then min-distance filter. Always preserves the last point.
+3. **`to_lanelet()`** — vectorized `pose2line()` computes left/right/center boundaries, `split_segments()` splits by distance or direction change using cumulative distances, `LaneletMap` builds OSM XML with a cached `pyproj.Transformer` for sub-meter MGRS-to-WGS84 precision
 
 ## Features
 
@@ -114,7 +138,6 @@ pip install -e .
 ### ROS 2 (node + launch)
 
 ```bash
-sudo apt install ros-$ROS_DISTRO-tf-transformations
 pip install -r requirements.txt
 cd /path/to/vifware_ws
 colcon build --packages-select lanelet2_generator
@@ -245,38 +268,6 @@ The following issues from v0.1.0 have been resolved:
 - **Removed unused code**: `save_osm()` wrapper, unused `ResponseStatus` import, dead `scripts/` entry point.
 - **Removed `transforms3d` dependency**: The library now only needs `numpy`, `pyproj`, and `plyfile`.
 
-## Future Improvements
-
-**1. Add unit tests**
-
-There are currently no tests. The FSD (T1-T3) calls for:
-- Unit tests for readers, filtering, geometry, and lanelet builder
-- Integration test with the sample CSV
-- Regression test ensuring splitting matches bag2lanelet behavior
-
-**2. Add type hints to public API**
-
-Functions like `load_path()`, `filter_path()`, `generate()`, and `to_lanelet()` have no type annotations. Adding parameter types and return annotations would improve IDE support and catch bugs early.
-
-**3. Configurable output filename**
-
-The output filename is always `YY-MM-DD-HH-MM-SS-lanelet2_map.osm`. Adding `--output-name` (CLI) / `output_filename` (API) would let users specify a fixed name, useful in CI pipelines or automated workflows.
-
-**4. Add `.gitignore`**
-
-No `.gitignore` exists in the package. Should ignore `*.osm` output, `__pycache__/`, `*.egg-info/`, and build artifacts.
-
-**5. Optional parameter handling in ROS node**
-
-Optional float parameters use `""` (empty string) as default and a helper `_opt_float()` to convert. Using ROS 2 parameter descriptors or conditional declaration would be cleaner.
-
-**6. Add `pre-commit` hooks**
-
-Add `black`, `ruff`, and optionally `mypy` via `pre-commit` for consistent code style and static analysis.
-
-**7. Southern hemisphere MGRS**
-
-The MGRS parser has not been validated for southern hemisphere coordinates. Northern hemisphere codes (like 33TWN, 33TWN) work correctly.
 
 ## License
 
