@@ -1,7 +1,25 @@
 """Read poses from PLY (x, y, z, q_w, q_x, q_y, q_z)."""
 
+from pathlib import Path
+
 import numpy as np
 from plyfile import PlyData
+
+
+def read_offset(path):
+    """
+    Parse a .offset file containing the UTM origin of a local coordinate frame.
+
+    Args:
+        path: Path to .offset file (3 space-separated floats: easting northing elevation).
+
+    Returns:
+        (easting, northing, elevation) tuple of floats.
+    """
+    vals = Path(path).read_text().strip().split()
+    if len(vals) < 3:
+        raise ValueError(f"Offset file must contain at least 3 values, got {len(vals)}: {path}")
+    return tuple(float(v) for v in vals[:3])
 
 
 def read_ply(path):

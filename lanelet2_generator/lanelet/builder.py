@@ -153,6 +153,7 @@ def to_lanelet(
     width=2.0,
     mgrs="33TWN",
     offset=(0.0, 0.0, 0.0),
+    geo_origin=None,
     use_centerline=False,
     split_distance=500,
     max_direction_change_deg=None,
@@ -162,12 +163,24 @@ def to_lanelet(
     """
     Build lanelet2 map from poses and save to output_dir.
 
+    Args:
+        geo_origin: Optional UTM origin (easting, northing, elevation) of the
+            input local frame, e.g. from a .offset companion file.  When set,
+            poses are shifted from local-frame to MGRS-local before processing.
+
     Returns:
         Path to saved .osm file
     """
     poses = np.asarray(poses, dtype=np.float64)
     if len(poses) == 0:
         raise ValueError("No poses to convert")
+
+    if geo_origin is not None:
+        _, _, base_e, base_n, _ = _parse_mgrs(mgrs)
+        poses = poses.copy()
+        poses[:, 0] += geo_origin[0] - base_e
+        poses[:, 1] += geo_origin[1] - base_n
+        poses[:, 2] += geo_origin[2]
 
     left, right, center = pose2line(poses, width=width, offset=offset)
     m = LaneletMap(mgrs=mgrs)
