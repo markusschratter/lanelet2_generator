@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lanelet2_generator"
 version = "0.2.0"
-description = "Generate Lanelet2 maps from path data (CSV, PLY, MCAP, sqlite3)"
+description = "Generate Lanelet2 maps from path data (CSV, PLY, YAML, MCAP, sqlite3)"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.8"
@@ -13,6 +13,12 @@ dependencies = [
     "numpy>=1.20,<3",
     "pyproj",
     "plyfile",
+    "PyYAML>=5.4",
+    "laspy>=2.0",
+    "lazrs>=0.6",
+    "mgrs",
+    "open3d>=0.17",
+    "matplotlib>=3.5",
 ]
 
 [project.optional-dependencies]
@@ -20,9 +26,17 @@ ros = [
     "rclpy",
     "rosbag2_py",
 ]
+las = [
+    "laspy>=2.0",
+    "lazrs>=0.6",
+    "mgrs",
+    "open3d>=0.17",
+    "matplotlib>=3.5",
+]
 
 [project.scripts]
 lanelet2_generator = "lanelet2_generator.cli:main"
+las_utm_to_mgrs = "lanelet2_generator.las_mgrs_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

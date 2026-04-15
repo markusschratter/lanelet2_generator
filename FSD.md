@@ -1,7 +1,7 @@
 # Functional Specification Document (FSD): lanelet2_generator
 
-Version: 0.2.0  
-Last updated: 2026-03-08
+Version: 0.5.0  
+Last updated: 2026-04-15
 
 ---
 
@@ -29,6 +29,7 @@ This document defines the functional requirements for `lanelet2_generator` and s
 - **R5:** Support PLY input with vertex properties: `x, y, z, q_w, q_x, q_y, q_z`.
 - **R6:** Support MCAP rosbag2 (.mcap) with `/tf` base_link transforms.
 - **R7:** Support sqlite3 rosbag2 (directory) with `/tf` base_link transforms.
+- **R7a:** Support waypoint YAML input (`.yaml`, `.yml`) with `waypoints[].position.{x,y,z}` and `orientation.heading_degree` (degrees).
 - **R8:** Provide a unified `load_path(path)` that dispatches by file extension or directory.
 
 ### 2.3 Path Filtering
@@ -69,6 +70,21 @@ This document defines the functional requirements for `lanelet2_generator` and s
 - **R26:** Provide a CLI script with the same options as bag2lanelet.
 - **R27:** CLI shall accept input path and output directory as positional arguments.
 - **R28:** Support all filter and split options via command-line flags.
+- **R28a:** CLI shall support optional `--map-projector-info` and, when provided, use `mgrs_grid` from that file (overriding `--mgrs`).
+
+### 2.8 LAS/LAZ Point Cloud Conversion
+
+- **R29:** Provide a CLI to convert UTM LAS/LAZ point clouds into local MGRS coordinates and write PCD output.
+- **R30:** The converter shall generate `map_projector_info.yaml` with keys: `projector_type`, `vertical_datum`, `mgrs_grid`.
+- **R31:** The converter shall support CRS selection via LAS header metadata or CLI overrides (`--epsg`, `--utm-frame`, `--utm-zone`/`--south`).
+- **R32:** The converter shall support optional point cloud downsampling (`--voxel-size`, `--stride`, `--max-points`).
+- **R33:** The converter shall support color output from LAS dimensions: `rgb`, `intensity`, or `classification` (including `auto` mode).
+- **R34:** Default output PCD filename shall be `pointcloud_map.pcd` when `--pcd-name` is not provided.
+
+### 2.9 Docker Wrappers
+
+- **R35:** `docker/lanelet2_generator.sh` shall default output directory to the input file directory when output is omitted.
+- **R36:** Docker wrappers shall accept pass-through CLI flags with or without a `--` separator.
 
 ---
 
@@ -122,7 +138,8 @@ When extending or modifying the package, the following requirements should be co
 
 ## 4. Out of Scope (Current Version)
 
-- Multi-lane or bidirectional lanelet generation
+- Multi-lane lanelet generation
+- Bidirectional lanelet generation
 - Integration with live Autoware routing (this package generates maps; it does not replace the routing node)
 - GUI or visualization tools
 - Southern hemisphere MGRS (parser not validated for southern bands)
@@ -135,3 +152,6 @@ When extending or modifying the package, the following requirements should be co
 |---------|------------|----------------------------------|
 | 0.1.0   | 2026-03-06 | Initial FSD for lanelet2_generator |
 | 0.2.0   | 2026-03-08 | Standalone Python support (lazy ROS imports, pure numpy quaternion math). Vectorized geometry and O(n) splitting. Sub-meter coordinate precision with cached transformer. Uniform filter pipeline for all inputs. Input validation. Service topic fix. Removed tf_transformations/transforms3d dependency. Added requirements R1a, R2a, R9a, R11a, R18a, R18b, P3, P4, D6, V1, V2. |
+| 0.3.0   | 2026-04-12 | Added waypoint YAML reader support (`.yaml`/`.yml`) in unified input dispatch and CLI documentation. Added requirement R7a. |
+| 0.4.0   | 2026-04-15 | Added LAS/LAZ UTM-to-local-MGRS conversion CLI with PCD export, projector YAML generation, CRS overrides, downsampling, and color modes (`rgb`, `intensity`, `classification`, `auto`). Added requirements R29–R33. |
+| 0.5.0   | 2026-04-15 | Added CLI support for `--map-projector-info` (`mgrs_grid` override), default LAS output filename `pointcloud_map.pcd`, and Docker wrapper behavior updates (optional output dir defaulting to input folder, optional `--` separator). Added requirements R28a, R34, R35, R36. |

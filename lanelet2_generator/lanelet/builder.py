@@ -9,74 +9,7 @@ import numpy as np
 from pyproj import CRS, Transformer
 
 from lanelet2_generator.geometry import pose2line, split_segments
-
-_MGRS_BANDS = "CDEFGHJKLMNPQRSTUVWX"
-_MGRS_COL_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-_MGRS_ROW_LETTERS = "ABCDEFGHJKLMNPQRSTUV"
-
-
-def _parse_mgrs(mgrs_string):
-    """
-    Parse an MGRS string into UTM zone, hemisphere, easting, and northing.
-
-    Accepts both full MGRS coordinates (e.g. "33TWN3497211656") and base grid
-    zone designators (e.g. "33TWN"), in which case easting/northing offsets are 0
-    and the result is the origin of the 100 km square.
-
-    Note: Southern hemisphere support is approximate and not fully validated.
-    """
-    zone = int(mgrs_string[:2])
-    band = mgrs_string[2]
-    square = mgrs_string[3:5]
-    coords = mgrs_string[5:]
-    coord_len = len(coords) // 2
-    easting_str = coords[:coord_len].ljust(5, "0")
-    northing_str = coords[coord_len:].ljust(5, "0")
-    easting_offset = int(easting_str)
-    northing_offset = int(northing_str)
-
-    col_letter, row_letter = square[0], square[1]
-
-    set_number = (zone - 1) % 3
-    col_index = _MGRS_COL_LETTERS.index(col_letter)
-    col_base = (set_number * 8) % 24
-    col_in_zone = (col_index - col_base) % 24
-    easting_100km = col_in_zone + 1
-
-    set_row = (zone - 1) % 2
-    row_index = _MGRS_ROW_LETTERS.index(row_letter)
-    if set_row == 1:
-        row_index = (row_index - 5) % 20
-
-    hemisphere = "north" if band >= "N" else "south"
-    band_index = _MGRS_BANDS.index(band)
-
-    raw_northing = row_index * 100000 + northing_offset
-
-    if hemisphere == "north":
-        # Band N (index 10) starts at equator.  Each band spans ~8 deg (~888 km).
-        band_start_approx = (band_index - 10) * 888889
-        cycle = max(0, int((band_start_approx - raw_northing + 1000000) // 2000000))
-        northing = raw_northing + cycle * 2000000
-    else:
-        # Southern hemisphere: false northing is 10,000,000
-        northing = raw_northing
-        if northing < 1000000:
-            northing += 10000000
-
-    easting = easting_100km * 100000 + easting_offset
-    return zone, hemisphere, easting, northing, band
-
-
-def mgrs_to_wgs(mgrs_string):
-    """Convert a full MGRS string to (lat, lon) WGS84."""
-    zone, hemisphere, easting, northing, _ = _parse_mgrs(mgrs_string)
-    is_south = hemisphere == "south"
-    utm_crs = CRS.from_dict({"proj": "utm", "zone": zone, "south": is_south, "datum": "WGS84"})
-    wgs84_crs = CRS.from_epsg(4326)
-    transformer = Transformer.from_crs(utm_crs, wgs84_crs, always_xy=True)
-    lon, lat = transformer.transform(easting, northing)
-    return (lat, lon)
+from lanelet2_generator.mgrs_utils import mgrs_to_wgs, parse_mgrs
 
 
 class LaneletMap:
@@ -87,7 +20,7 @@ class LaneletMap:
         ET.SubElement(self.root, "MetaInfo", {"format_version": "1", "map_version": "2"})
 
         # Parse the base MGRS grid zone once, create a single Transformer
-        zone, hemisphere, base_e, base_n, _ = _parse_mgrs(mgrs)
+        zone, hemisphere, base_e, base_n, _ = parse_mgrs(mgrs)
         self._base_easting = base_e
         self._base_northing = base_n
         is_south = hemisphere == "south"
@@ -176,7 +109,7 @@ def to_lanelet(
         raise ValueError("No poses to convert")
 
     if geo_origin is not None:
-        _, _, base_e, base_n, _ = _parse_mgrs(mgrs)
+        _, _, base_e, base_n, _ = parse_mgrs(mgrs)
         poses = poses.copy()
         poses[:, 0] += geo_origin[0] - base_e
         poses[:, 1] += geo_origin[1] - base_n

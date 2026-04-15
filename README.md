@@ -1,8 +1,30 @@
 # lanelet2_generator
 
-Generate Lanelet2 maps from path data. Supports multiple input formats and a ROS 2 service for route-based generation.
+Generate Lanelet2 maps from path data. Supports multiple input formats, a LAS/LAZ-to-PCD MGRS conversion tool, and a ROS 2 service for route-based generation.
 
 This package is based on [bag2lanelet](https://github.com/autowarefoundation/autoware_tools/tree/main/bag2lanelet) by the Autoware Foundation.
+
+## Quick Start
+
+### Docker
+
+```bash
+# LAS/LAZ -> pointcloud_map.pcd + map_projector_info.yaml + map_config.yaml
+docker/pointcloud_converter.sh data/merged_clean.las --utm-frame 32N --voxel-size 0.1 --color-by auto
+
+# PLY -> lanelet2 .osm (output defaults to input folder)
+docker/lanelet2_generator.sh data/traj_fusion_gps.ply --map-projector-info data/map_projector_info.yaml -l 4.0 -s 20 --split-distance 100
+```
+
+### Direct Python 3
+
+```bash
+# LAS/LAZ -> pointcloud_map.pcd + map_projector_info.yaml + map_config.yaml
+python3 -m lanelet2_generator.las_mgrs_cli data/merged_clean.las data --utm-frame 32N --voxel-size 0.1 --color-by auto
+
+# PLY -> lanelet2 .osm
+python3 -m lanelet2_generator.cli data/traj_fusion_gps.ply data --map-projector-info data/map_projector_info.yaml -l 4.0 -s 20 --split-distance 100
+```
 
 ## Architecture
 
@@ -13,10 +35,13 @@ lanelet2_generator/
 ├── lanelet2_generator/               # Plain Python library (no ROS)
 │   ├── __init__.py                   #   generate() entry point, lazy read_bag import
 │   ├── cli.py                        #   CLI: argparse → generate()
+│   ├── las_mgrs_cli.py               #   CLI: LAS/LAZ UTM -> local MGRS PCD + map_projector_info.yaml
+│   ├── mgrs_utils.py                 #   Shared MGRS parsing/origin helpers
 │   ├── readers/
 │   │   ├── base.py                   #   load_path() — dispatches by file extension
 │   │   ├── csv.py                    #   read_csv() — vectorized yaw→quaternion
 │   │   ├── ply.py                    #   read_ply() — with input validation
+│   │   ├── yaml_waypoints.py         #   read_yaml() — waypoint YAML to (N,7)
 │   │   └── bag.py                    #   read_bag() — lazily imported (requires ROS)
 │   ├── filtering/
 │   │   └── path.py                   #   filter_path(), min_distance, downsample
@@ -28,6 +53,10 @@ lanelet2_generator/
 │   └── route_to_lanelet_node.py      #   /api/routing/set_route_points service
 ├── launch/
 │   └── route_to_lanelet.launch.xml
+├── docker/
+│   ├── Dockerfile                     #   Container image for CLI tools
+│   ├── pointcloud_converter.sh        #   Docker wrapper for LAS/LAZ -> PCD
+│   └── lanelet2_generator.sh          #   Docker wrapper for lanelet map generation
 ├── sample_data/
 ├── CMakeLists.txt
 ├── package.xml
@@ -122,6 +151,8 @@ All inputs produce an `(N, 7)` pose array `[x, y, z, qx, qy, qz, qw]` that flows
 ## Features
 
 - **Input formats:** CSV, PLY, MCAP bag, sqlite3 rosbag2
+- **Waypoint YAML:** DJI-like waypoint YAML (`.yaml`, `.yml`) via `waypoints[].position` + `heading_degree`
+- **Point cloud tool:** LAS/LAZ (UTM) -> local MGRS PCD + `map_projector_info.yaml`
 - **Path filtering:** Min distance, downsampling (step)
 - **Lanelet splitting:** Max length, direction-change split (as in bag2lanelet)
 - **ROS 2 service:** `/api/routing/set_route_points` to generate lanelet2 from route waypoints
@@ -133,6 +164,7 @@ All inputs produce an `(N, 7)` pose array `[x, y, z, qx, qy, qz, qw]` that flows
 ```bash
 pip install -e .
 # For bag/MCAP support, also: pip install -e ".[ros]"
+# For LAS/LAZ -> PCD tool, also: pip install -e ".[las]"
 ```
 
 ### ROS 2 (node + launch)
@@ -146,12 +178,44 @@ source install/setup.bash
 
 ## Usage
 
+### Docker helpers
+
+Build the image:
+
+```bash
+docker build -f docker/Dockerfile -t lanelet2-generator:latest .
+```
+
+Run point cloud conversion (LAS/LAZ -> PCD + YAML):
+
+```bash
+docker/pointcloud_converter.sh \
+  data/input_cloud.laz \
+  data \
+  --utm-frame 32N --voxel-size 0.1 --color-by auto
+```
+
+Run lanelet generation:
+
+```bash
+docker/lanelet2_generator.sh \
+  data/mission.yaml \
+  data \
+  --map-projector-info data/map_projector_info.yaml -l 2.5 -s 5
+```
+
+Notes:
+
+- Both scripts auto-build the Docker image if needed.
+- Input and output can be different folders; if output is omitted, the input folder is used.
+- You can pass options directly after required args; using `--` as a separator is optional.
+
 ### CLI (plain Python, not ROS)
 
 **Syntax:**
 
 ```bash
-python -m lanelet2_generator.cli <input> <output_dir> [options]
+python3 -m lanelet2_generator.cli <input> <output_dir> [options]
 # or, after pip install:
 lanelet2_generator <input> <output_dir> [options]
 ```
@@ -160,27 +224,35 @@ lanelet2_generator <input> <output_dir> [options]
 
 ```bash
 # From CSV
-python -m lanelet2_generator.cli waypoints.csv ./output -l 3.0 -m 33TWN
+python3 -m lanelet2_generator.cli data/waypoints.csv data -l 3.0 -m 33TWN
 
 # From PLY
-python -m lanelet2_generator.cli trajectory.ply ./output -l 2.5 -m 33TWN
+python3 -m lanelet2_generator.cli data/trajectory.ply data -l 2.5 -m 33TWN
+
+# From waypoint YAML (.yaml/.yml)
+python3 -m lanelet2_generator.cli data/mission.yaml data -l 2.5 -m 32UQU -s 5
+
+# Use map_projector_info.yaml to auto-set MGRS (no -m needed)
+python3 -m lanelet2_generator.cli data/traj_fusion_gps.ply data \
+  --map-projector-info data/map_projector_info.yaml -l 4.0 -s 20 --split-distance 100
 
 # From MCAP bag (requires ROS env / rosbag2)
 source /opt/ros/humble/setup.bash
-python -m lanelet2_generator.cli recorded.mcap ./output -l 3.0 -m 33TWN
+python3 -m lanelet2_generator.cli data/recorded.mcap data -l 3.0 -m 33TWN
 
 # From rosbag2 directory (sqlite3)
-python -m lanelet2_generator.cli /path/to/bag ./output -l 3.0 -m 33TWN
+python3 -m lanelet2_generator.cli /path/to/bag data -l 3.0 -m 33TWN
 ```
 
 **CLI parameters:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `input` | path | (required) | Input: CSV, PLY, MCAP file, or rosbag2 directory |
+| `input` | path | (required) | Input: CSV, PLY, YAML, MCAP file, or rosbag2 directory |
 | `output_lanelet` | path | (required) | Output directory for .osm file |
 | `-l`, `--width` | float | 2.0 | Lane width [m] |
 | `-m`, `--mgrs` | string | 33TWN | MGRS code |
+| `--map-projector-info` | path | — | Optional `map_projector_info.yaml`; uses `mgrs_grid` from file (overrides `--mgrs`) |
 | `-s`, `--speed-limit` | float | 30 | Speed limit [km/h] |
 | `--offset` | float float float | 0 0 0 | Offset [m] from centerline (x y z) |
 | `--center` | flag | false | Add centerline to lanelet |
@@ -219,6 +291,58 @@ The node advertises `/api/routing/set_route_points` (`autoware_adapi_v1_msgs/srv
 | `split_direction_deg` | — | Split on direction change [deg] |
 | `split_direction_window_m` | — | Direction change window [m] |
 
+### LAS/LAZ to local MGRS PCD
+
+Converts UTM LAS/LAZ point clouds to the same local MGRS frame used by this package:
+
+- Detects (or accepts) UTM CRS
+- Detects `mgrs_grid` from cloud centroid (or force with `--mgrs-grid`)
+- Shifts points to local MGRS coordinates
+- Optional downsampling (`--stride`, `--max-points`, `--voxel-size`)
+- Writes PCD and `map_projector_info.yaml`
+
+**Syntax:**
+
+```bash
+python3 -m lanelet2_generator.las_mgrs_cli <input.las|input.laz> <output_dir> [options]
+```
+
+**Examples:**
+
+```bash
+# Explicit EPSG
+python3 -m lanelet2_generator.las_mgrs_cli data/input_cloud.laz data \
+  --pcd-name pointcloud_map.pcd --epsg 32632 --voxel-size 0.1 --color-by rgb
+
+# UTM frame notation (instead of EPSG)
+python3 -m lanelet2_generator.las_mgrs_cli data/input_cloud.laz data \
+  --utm-frame 32N --voxel-size 0.1 --color-by auto
+```
+
+**Important notes:**
+
+- `.laz` requires a laspy backend (e.g. `lazrs`): `pip install lazrs`
+- Use `--utm-frame` (e.g. `32N`) or `--epsg` if LAS header CRS is missing/wrong
+- `output_dir` is a directory; set output filename with `--pcd-name`
+- If the source cloud has RGB, use `--color-by rgb` (or `--color-by auto`)
+
+**Key options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--epsg` | — | CRS override by EPSG |
+| `--utm-frame` | — | CRS override in UTM format, e.g. `32N`, `32S` |
+| `--utm-zone` + `--south` | — | Alternative CRS override |
+| `--mgrs-grid` | auto | Force 5-char MGRS grid (e.g. `32UQU`) |
+| `--color-by` | `auto` | `auto`, `rgb`, `intensity`, `classification`, `none` |
+| `--colormap` | `viridis` | Colormap for scalar coloring |
+| `--color-percentiles` | `2 98` | Scalar clipping percentiles |
+| `--voxel-size` | — | Voxel downsample size [m] |
+| `--stride` | — | Keep every k-th point |
+| `--max-points` | — | Random subsample limit |
+| `--pcd-name` | `pointcloud_map.pcd` | Output PCD filename |
+| `--yaml-name` | `map_projector_info.yaml` | Output projector YAML filename |
+
 ### Python API
 
 ```python
@@ -236,6 +360,7 @@ path = generate(poses=poses, output_dir="./output", mgrs="33TWN", width=2.0)
 |--------|-----------|--------|
 | CSV | .csv | x, y, z, yaw, velocity, change_flag |
 | PLY | .ply | Vertices: x, y, z, q_w, q_x, q_y, q_z |
+| Waypoint YAML | .yaml, .yml | `waypoints[].position.{x,y,z}` + `orientation.heading_degree` |
 | MCAP | .mcap | /tf with base_link |
 | rosbag2 | directory | /tf with base_link (sqlite3) |
 

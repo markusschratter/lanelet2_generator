@@ -4,6 +4,7 @@ from pathlib import Path
 
 from lanelet2_generator.readers.csv import read_csv
 from lanelet2_generator.readers.ply import read_ply
+from lanelet2_generator.readers.yaml_waypoints import read_yaml
 
 
 def load_path(path, **kwargs):
@@ -11,7 +12,7 @@ def load_path(path, **kwargs):
     Load poses from file. Dispatches by extension.
 
     Args:
-        path: Path to CSV, PLY, MCAP, or rosbag2 directory
+        path: Path to CSV, PLY, YAML, MCAP, or rosbag2 directory
         **kwargs: Passed to reader (e.g. interval for bags)
 
     Returns:
@@ -26,6 +27,8 @@ def load_path(path, **kwargs):
         return read_csv(path)
     if suffix == ".ply":
         return read_ply(path)
+    if suffix in (".yaml", ".yml"):
+        return read_yaml(path)
     if suffix == ".mcap":
         from lanelet2_generator.readers.bag import read_bag
         return read_bag(path, **kwargs)
@@ -33,4 +36,6 @@ def load_path(path, **kwargs):
         from lanelet2_generator.readers.bag import read_bag
         return read_bag(path, **kwargs)
 
-    raise ValueError(f"Unsupported input format: {path} (expect .csv, .ply, .mcap, or directory)")
+    raise ValueError(
+        f"Unsupported input format: {path} (expect .csv, .ply, .yaml, .yml, .mcap, or directory)"
+    )

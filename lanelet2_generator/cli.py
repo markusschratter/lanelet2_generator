@@ -9,12 +9,18 @@ from lanelet2_generator import generate
 def main():
     parser = argparse.ArgumentParser(
         description="Create lanelet2 map from path data. "
-        "Input: CSV (.csv), PLY (.ply), MCAP bag (.mcap), or rosbag2 directory (sqlite3)",
+        "Input: CSV (.csv), PLY (.ply), YAML (.yaml/.yml), MCAP bag (.mcap), or rosbag2 directory (sqlite3)",
     )
-    parser.add_argument("input", help="input path: CSV, PLY, MCAP, or rosbag2 directory")
+    parser.add_argument("input", help="input path: CSV, PLY, YAML, MCAP, or rosbag2 directory")
     parser.add_argument("output_lanelet", help="output lanelet2 save path (directory)")
     parser.add_argument("-l", "--width", type=float, default=2.0, help="lane width [m]")
     parser.add_argument("-m", "--mgrs", default="33TWN", help="MGRS code")
+    parser.add_argument(
+        "--map-projector-info",
+        type=Path,
+        default=None,
+        help="optional map_projector_info.yaml; uses mgrs_grid from file",
+    )
     parser.add_argument("--offset", type=float, nargs=3, default=[0.0, 0.0, 0.0], help="offset [m] from centerline")
     parser.add_argument("--center", action="store_true", help="add centerline to lanelet")
     parser.add_argument("--min-distance", type=float, default=None, metavar="M", help="minimum distance [m] between points")
@@ -40,6 +46,7 @@ def main():
         output_dir=output_path,
         width=args.width,
         mgrs=args.mgrs,
+        map_projector_info=args.map_projector_info,
         offset=tuple(args.offset),
         use_centerline=args.center,
         min_distance=args.min_distance,
