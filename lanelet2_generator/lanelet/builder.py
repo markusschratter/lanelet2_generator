@@ -92,6 +92,7 @@ def to_lanelet(
     max_direction_change_deg=None,
     direction_change_window_m=None,
     speed_limit=30,
+    bidirectional=True,
 ):
     """
     Build lanelet2 map from poses and save to output_dir.
@@ -147,6 +148,39 @@ def to_lanelet(
         right_way = m.add_way(right_nodes)
         center_way = m.add_way(center_nodes) if use_centerline else None
         m.add_relation(left_way, right_way, center_way, speed_limit=speed_limit)
+
+    if bidirectional:
+        # Build reverse-direction lanelets in reverse segment order and share
+        # boundary nodes between adjacent segments for routing connectivity.
+        prev_rev_left = prev_rev_right = prev_rev_center = None
+        for start, end in reversed(segments):
+            left_seg = left[start:end]
+            right_seg = right[start:end]
+            center_seg = center[start:end]
+
+            rev_left_geom = right_seg[::-1]
+            rev_right_geom = left_seg[::-1]
+            rev_center_geom = center_seg[::-1]
+
+            if prev_rev_left is not None:
+                rev_left_nodes = [prev_rev_left] + [m.add_node(*n) for n in rev_left_geom[1:]]
+                rev_right_nodes = [prev_rev_right] + [m.add_node(*n) for n in rev_right_geom[1:]]
+                rev_center_nodes = (
+                    [prev_rev_center] + [m.add_node(*n) for n in rev_center_geom[1:]]
+                ) if use_centerline else None
+            else:
+                rev_left_nodes = [m.add_node(*n) for n in rev_left_geom]
+                rev_right_nodes = [m.add_node(*n) for n in rev_right_geom]
+                rev_center_nodes = [m.add_node(*n) for n in rev_center_geom] if use_centerline else None
+
+            prev_rev_left = rev_left_nodes[-1]
+            prev_rev_right = rev_right_nodes[-1]
+            prev_rev_center = rev_center_nodes[-1] if rev_center_nodes else None
+
+            rev_left_way = m.add_way(rev_left_nodes)
+            rev_right_way = m.add_way(rev_right_nodes)
+            rev_center_way = m.add_way(rev_center_nodes) if use_centerline else None
+            m.add_relation(rev_left_way, rev_right_way, rev_center_way, speed_limit=speed_limit)
 
     os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, datetime.now().strftime("%y-%m-%d-%H-%M-%S") + "-lanelet2_map.osm")

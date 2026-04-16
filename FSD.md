@@ -1,7 +1,7 @@
 # Functional Specification Document (FSD): lanelet2_generator
 
-Version: 0.5.0  
-Last updated: 2026-04-15
+Version: 0.6.0  
+Last updated: 2026-04-16
 
 ---
 
@@ -55,6 +55,7 @@ This document defines the functional requirements for `lanelet2_generator` and s
 - **R18a:** Coordinate conversion shall use sub-meter precision (float UTM offsets), not integer-truncated MGRS strings.
 - **R18b:** The CRS transformer shall be created once per map, not per node.
 - **R19:** Support lane width, offset, speed limit, and optional centerline.
+- **R19a:** Support optional bidirectional lanelet generation, creating reverse-direction lanelets from the same path geometry.
 - **R20:** Output filename format: `YY-MM-DD-HH-MM-SS-lanelet2_map.osm`.
 
 ### 2.6 ROS 2 Integration
@@ -139,7 +140,6 @@ When extending or modifying the package, the following requirements should be co
 ## 4. Out of Scope (Current Version)
 
 - Multi-lane lanelet generation
-- Bidirectional lanelet generation
 - Integration with live Autoware routing (this package generates maps; it does not replace the routing node)
 - GUI or visualization tools
 - Southern hemisphere MGRS (parser not validated for southern bands)
@@ -155,3 +155,4 @@ When extending or modifying the package, the following requirements should be co
 | 0.3.0   | 2026-04-12 | Added waypoint YAML reader support (`.yaml`/`.yml`) in unified input dispatch and CLI documentation. Added requirement R7a. |
 | 0.4.0   | 2026-04-15 | Added LAS/LAZ UTM-to-local-MGRS conversion CLI with PCD export, projector YAML generation, CRS overrides, downsampling, and color modes (`rgb`, `intensity`, `classification`, `auto`). Added requirements R29–R33. |
 | 0.5.0   | 2026-04-15 | Added CLI support for `--map-projector-info` (`mgrs_grid` override), default LAS output filename `pointcloud_map.pcd`, and Docker wrapper behavior updates (optional output dir defaulting to input folder, optional `--` separator). Added requirements R28a, R34, R35, R36. |
+| 0.6.0   | 2026-04-16 | Added optional bidirectional lanelet generation in library/CLI/ROS node and launch parameter support. Added requirement R19a and removed bidirectional generation from out-of-scope. |
