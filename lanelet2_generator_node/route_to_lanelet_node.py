@@ -30,7 +30,7 @@ class RouteToLaneletNode(Node):
         self.declare_parameter("mgrs", "33TWN")
         self.declare_parameter("width", 2.0)
         self.declare_parameter("speed_limit", 30)
-        self.declare_parameter("min_distance", "")
+        self.declare_parameter("min_distance", "1.0")
         self.declare_parameter("step", 1)
         self.declare_parameter("split_distance", "500")
         self.declare_parameter("split_direction_deg", "")

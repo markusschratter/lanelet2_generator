@@ -14,6 +14,9 @@ docker/pointcloud_converter.sh data/merged_clean.las --utm-frame 32N --voxel-siz
 
 # PLY -> lanelet2 .osm (output defaults to input folder)
 docker/lanelet2_generator.sh data/traj_fusion_gps.ply --map-projector-info data/map_projector_info.yaml -l 4.0 -s 20 --split-distance 100
+
+# Merge multiple Lanelet2 .osm files (two, three, …) — inputs and -o must sit under one directory tree
+docker/merge_lanelets.sh data/map_a.osm data/map_b.osm data/map_c.osm -o data/merged.osm
 ```
 
 ### Direct Python 3
@@ -24,6 +27,9 @@ python3 -m lanelet2_generator.las_mgrs_cli data/merged_clean.las data --utm-fram
 
 # PLY -> lanelet2 .osm
 python3 -m lanelet2_generator.cli data/traj_fusion_gps.ply data --map-projector-info data/map_projector_info.yaml -l 4.0 -s 20 --split-distance 100
+
+# Merge multiple .osm maps (IDs remapped; default offsets avoid collisions)
+python3 -m lanelet2_generator.merge_lanelets_cli data/map_a.osm data/map_b.osm -o data/merged.osm
 ```
 
 ## Architecture
@@ -36,6 +42,8 @@ lanelet2_generator/
 │   ├── __init__.py                   #   generate() entry point, lazy read_bag import
 │   ├── cli.py                        #   CLI: argparse → generate()
 │   ├── las_mgrs_cli.py               #   CLI: LAS/LAZ UTM -> local MGRS PCD + map_projector_info.yaml
+│   ├── merge_lanelets_cli.py         #   CLI: merge multiple Lanelet2 .osm files (ID remap)
+│   ├── osm_merge.py                  #   merge_lanelet_osm_files(), auto/step offsets
 │   ├── mgrs_utils.py                 #   Shared MGRS parsing/origin helpers
 │   ├── readers/
 │   │   ├── base.py                   #   load_path() — dispatches by file extension
@@ -56,7 +64,8 @@ lanelet2_generator/
 ├── docker/
 │   ├── Dockerfile                     #   Container image for CLI tools
 │   ├── pointcloud_converter.sh        #   Docker wrapper for LAS/LAZ -> PCD
-│   └── lanelet2_generator.sh          #   Docker wrapper for lanelet map generation
+│   ├── lanelet2_generator.sh          #   Docker wrapper for lanelet map generation
+│   └── merge_lanelets.sh              #   Docker wrapper for merging multiple .osm maps
 ├── sample_data/
 ├── CMakeLists.txt
 ├── package.xml
@@ -256,7 +265,7 @@ python3 -m lanelet2_generator.cli /path/to/bag data -l 3.0 -m 33TWN
 | `-s`, `--speed-limit` | float | 30 | Speed limit [km/h] |
 | `--offset` | float float float | 0 0 0 | Offset [m] from centerline (x y z) |
 | `--center` | flag | false | Add centerline to lanelet |
-| `--min-distance` | float | — | Min distance [m] between consecutive points |
+| `--min-distance` | float | 1.0 | Min distance [m] between consecutive points |
 | `--step` | int | 1 | Downsample: keep every Nth point (CSV/PLY only) |
 | `--interval` | float float | 0.1 2.0 | [Bag/MCAP only] Min and max interval [m] between tf poses |
 | `--split-distance` | float | 500 | Split lanelet every M meters along path |
@@ -287,7 +296,7 @@ The node advertises `/api/routing/set_route_points` (`autoware_adapi_v1_msgs/srv
 | `mgrs` | 33TWN | MGRS code |
 | `width` | 2.0 | Lane width [m] |
 | `speed_limit` | 30 | Speed limit [km/h] |
-| `min_distance` | — | Min distance [m] between points |
+| `min_distance` | 1.0 | Min distance [m] between points |
 | `step` | 1 | Downsample step |
 | `split_distance` | 500 | Split every M meters |
 | `split_direction_deg` | — | Split on direction change [deg] |

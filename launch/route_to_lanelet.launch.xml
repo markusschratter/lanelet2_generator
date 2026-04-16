@@ -4,7 +4,7 @@
   <arg name="mgrs" default="33TWN" description="MGRS code" />
   <arg name="width" default="2.0" description="Lane width [m]" />
   <arg name="speed_limit" default="30" description="Speed limit [km/h]" />
-  <arg name="min_distance" default="" description="Min distance between points [m]" />
+  <arg name="min_distance" default="1.0" description="Min distance between points [m]" />
   <arg name="step" default="1" description="Downsample step" />
   <arg name="split_distance" default="500" description="Split every M meters" />
   <arg name="split_direction_deg" default="" description="Split on direction change [deg]" />

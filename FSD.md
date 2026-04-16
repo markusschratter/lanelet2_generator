@@ -34,7 +34,7 @@ This document defines the functional requirements for `lanelet2_generator` and s
 
 ### 2.3 Path Filtering
 
-- **R9:** Support `min_distance`: keep only poses at least M meters apart.
+- **R9:** Support `min_distance`: keep only poses at least M meters apart (default `1.0` in lanelet generation entry points).
 - **R9a:** Filtering shall always preserve the first and last point of the path.
 - **R10:** Support `step`: downsample by keeping every Nth point.
 - **R11:** Provide `filter_path(poses, min_distance=..., step=...)` as the main entry point.

@@ -11,6 +11,12 @@ from lanelet2_generator.readers import load_path, read_csv, read_ply, read_offse
 from lanelet2_generator.filtering import filter_path, filter_by_min_distance, filter_downsample
 from lanelet2_generator.geometry import pose2line, smooth_path, split_segments
 from lanelet2_generator.lanelet import to_lanelet, LaneletMap
+from lanelet2_generator.osm_merge import (
+    apply_id_offset,
+    compute_auto_offsets,
+    compute_step_offsets,
+    merge_lanelet_osm_files,
+)
 
 __all__ = [
     "load_path",
@@ -28,6 +34,10 @@ __all__ = [
     "to_lanelet",
     "LaneletMap",
     "generate",
+    "merge_lanelet_osm_files",
+    "compute_auto_offsets",
+    "compute_step_offsets",
+    "apply_id_offset",
 ]
 
 
@@ -49,7 +59,7 @@ def generate(
     offset=(0.0, 0.0, 0.0),
     geo_origin=None,
     use_centerline=False,
-    min_distance=None,
+    min_distance=1.0,
     step=1,
     interval=(0.1, 2.0),
     split_distance=500,

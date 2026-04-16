@@ -23,7 +23,7 @@ def main():
     )
     parser.add_argument("--offset", type=float, nargs=3, default=[0.0, 0.0, 0.0], help="offset [m] from centerline")
     parser.add_argument("--center", action="store_true", help="add centerline to lanelet")
-    parser.add_argument("--min-distance", type=float, default=None, metavar="M", help="minimum distance [m] between points")
+    parser.add_argument("--min-distance", type=float, default=1.0, metavar="M", help="minimum distance [m] between points (default: 1.0)")
     parser.add_argument("--interval", type=float, nargs=2, default=[0.1, 2.0], metavar=("MIN", "MAX"),
         help="[bag/mcap only] min and max interval between tf poses [m]")
     parser.add_argument("--step", type=int, default=1, help="[CSV/PLY only] downsample step (default: 1)")

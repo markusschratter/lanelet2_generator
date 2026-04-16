@@ -37,7 +37,7 @@ if [[ ! -f "${INPUT_PATH}" ]]; then
 fi
 
 OUTPUT_DIR=""
-if [[ $# -gt 0 && "$1" != "--" ]]; then
+if [[ $# -gt 0 && "$1" != "--" && "$1" != -* ]]; then
   OUTPUT_DIR="$1"
   shift
   if [[ "${OUTPUT_DIR}" != /* ]]; then
