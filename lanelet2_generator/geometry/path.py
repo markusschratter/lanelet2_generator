@@ -63,6 +63,89 @@ def _angle_diff(a, b):
     return np.arctan2(np.sin(a - b), np.cos(a - b))
 
 
+def smooth_path(pose_array, window=0):
+    """
+    Densify poses with an interpolating cubic curve that preserves samples.
+
+    The generated path passes through every original pose position exactly and
+    only inserts smooth intermediate points between them.
+
+    Args:
+        pose_array: (N, 7) [x,y,z,qx,qy,qz,qw]
+        window: Number of subdivisions per original segment. Values <= 1
+            disable smoothing.
+
+    Returns:
+        Smoothed/densified (M, 7) pose array
+    """
+    pose_array = np.asarray(pose_array, dtype=np.float64)
+    if pose_array.ndim != 2 or pose_array.shape[1] < 7:
+        raise ValueError(
+            f"pose_array must be (N, 7) [x,y,z,qx,qy,qz,qw], got shape {pose_array.shape}"
+        )
+
+    n = len(pose_array)
+    if n < 3 or window is None or window <= 1:
+        return pose_array.copy()
+
+    subdivisions = int(window)
+    if subdivisions <= 1:
+        return pose_array.copy()
+
+    positions = pose_array[:, :3]
+    out_positions = [positions[0].copy()]
+    tangents = []
+
+    for i in range(n - 1):
+        p0 = positions[i - 1] if i > 0 else positions[i]
+        p1 = positions[i]
+        p2 = positions[i + 1]
+        p3 = positions[i + 2] if i + 2 < n else positions[i + 1]
+
+        m1 = 0.5 * (p2 - p0)
+        m2 = 0.5 * (p3 - p1)
+
+        for step in range(1, subdivisions + 1):
+            t = step / subdivisions
+            t2 = t * t
+            t3 = t2 * t
+
+            h00 = 2.0 * t3 - 3.0 * t2 + 1.0
+            h10 = t3 - 2.0 * t2 + t
+            h01 = -2.0 * t3 + 3.0 * t2
+            h11 = t3 - t2
+            point = h00 * p1 + h10 * m1 + h01 * p2 + h11 * m2
+
+            dh00 = 6.0 * t2 - 6.0 * t
+            dh10 = 3.0 * t2 - 4.0 * t + 1.0
+            dh01 = -6.0 * t2 + 6.0 * t
+            dh11 = 3.0 * t2 - 2.0 * t
+            tangent = dh00 * p1 + dh10 * m1 + dh01 * p2 + dh11 * m2
+
+            out_positions.append(point)
+            tangents.append(tangent)
+
+    out_positions = np.asarray(out_positions, dtype=np.float64)
+    out_count = len(out_positions)
+
+    yaws = np.empty(out_count, dtype=np.float64)
+    if tangents:
+        tangent_arr = np.asarray(tangents, dtype=np.float64)
+        yaws[1:] = np.arctan2(tangent_arr[:, 1], tangent_arr[:, 0])
+        yaws[0] = yaws[1]
+    else:
+        deltas = np.diff(out_positions[:, :2], axis=0)
+        seg_yaws = np.arctan2(deltas[:, 1], deltas[:, 0])
+        yaws[0] = seg_yaws[0]
+        yaws[1:] = seg_yaws
+
+    smoothed = np.zeros((out_count, 7), dtype=np.float64)
+    smoothed[:, :3] = out_positions
+    smoothed[:, 5] = np.sin(yaws / 2.0)
+    smoothed[:, 6] = np.cos(yaws / 2.0)
+    return smoothed
+
+
 def split_segments(
     center,
     pose_array,

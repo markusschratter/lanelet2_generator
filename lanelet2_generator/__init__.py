@@ -9,7 +9,7 @@ import yaml
 
 from lanelet2_generator.readers import load_path, read_csv, read_ply, read_offset, read_yaml
 from lanelet2_generator.filtering import filter_path, filter_by_min_distance, filter_downsample
-from lanelet2_generator.geometry import pose2line, split_segments
+from lanelet2_generator.geometry import pose2line, smooth_path, split_segments
 from lanelet2_generator.lanelet import to_lanelet, LaneletMap
 
 __all__ = [
@@ -23,6 +23,7 @@ __all__ = [
     "filter_by_min_distance",
     "filter_downsample",
     "pose2line",
+    "smooth_path",
     "split_segments",
     "to_lanelet",
     "LaneletMap",
@@ -56,6 +57,7 @@ def generate(
     direction_change_window_m=None,
     speed_limit=30,
     bidirectional=True,
+    smooth_window=0,
 ):
     """
     Generate lanelet2 map from input path or pose array.
@@ -81,6 +83,8 @@ def generate(
         direction_change_window_m: Window for direction change [m]
         speed_limit: Speed limit [km/h]
         bidirectional: Generate opposite-direction lanelets too
+        smooth_window: Interpolating smoothing subdivisions per segment;
+            0 disables
 
     Returns:
         Path to saved .osm file
@@ -124,6 +128,7 @@ def generate(
             print(f"Using geo origin from {offset_path}: E={geo_origin[0]:.1f} N={geo_origin[1]:.1f} Z={geo_origin[2]:.1f}")
 
     poses = filter_path(poses, min_distance=min_distance, step=step)
+    poses = smooth_path(poses, window=smooth_window)
 
     return to_lanelet(
         poses,

@@ -32,6 +32,13 @@ def main():
         help="split when direction changes more than DEG deg within M m (e.g. 80 30)")
     parser.add_argument("-s", "--speed-limit", type=float, default=30, metavar="KMH", help="speed limit [km/h]")
     parser.add_argument(
+        "--smooth-window",
+        type=int,
+        default=0,
+        metavar="N",
+        help="interpolating smoothing subdivisions per segment; 0 disables",
+    )
+    parser.add_argument(
         "--no-bidirectional",
         dest="bidirectional",
         action="store_false",
@@ -64,6 +71,7 @@ def main():
         direction_change_window_m=window_m,
         speed_limit=args.speed_limit,
         bidirectional=args.bidirectional,
+        smooth_window=args.smooth_window,
     )
     print(f"Saved: {result}")
 

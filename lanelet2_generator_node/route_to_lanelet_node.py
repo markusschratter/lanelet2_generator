@@ -35,6 +35,7 @@ class RouteToLaneletNode(Node):
         self.declare_parameter("split_distance", "500")
         self.declare_parameter("split_direction_deg", "")
         self.declare_parameter("split_direction_window_m", "")
+        self.declare_parameter("smooth_window", 0)
         self.declare_parameter("bidirectional", True)
 
         self.srv = self.create_service(
@@ -78,6 +79,7 @@ class RouteToLaneletNode(Node):
         split_distance = _opt_float(self.get_parameter("split_distance").value)
         max_deg = _opt_float(self.get_parameter("split_direction_deg").value)
         window_m = _opt_float(self.get_parameter("split_direction_window_m").value)
+        smooth_window = int(self.get_parameter("smooth_window").value)
         bidirectional = bool(self.get_parameter("bidirectional").value)
 
         try:
@@ -93,6 +95,7 @@ class RouteToLaneletNode(Node):
                 direction_change_window_m=window_m,
                 speed_limit=speed_limit,
                 bidirectional=bidirectional,
+                smooth_window=smooth_window,
             )
             self.get_logger().info(f"Generated lanelet2 map: {result}")
             response.status.success = True

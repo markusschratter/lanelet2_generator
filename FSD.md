@@ -1,6 +1,6 @@
 # Functional Specification Document (FSD): lanelet2_generator
 
-Version: 0.6.0  
+Version: 0.7.0  
 Last updated: 2026-04-16
 
 ---
@@ -41,14 +41,22 @@ This document defines the functional requirements for `lanelet2_generator` and s
 - **R11a:** `generate()` shall apply filtering uniformly to all input formats (CSV, PLY, bag). No format-specific hardcoded decimation.
 - **R12:** Filtering shall produce a reduced pose array; all filters shall be optional.
 
-### 2.4 Lanelet Splitting
+### 2.4 Path Smoothing
+
+- **R11b:** Support optional `smooth_window` (non-negative integer): number of subdivisions inserted along each consecutive pair of poses for interpolating path smoothing. Values `0`, `None`, or `<= 1` shall disable smoothing.
+- **R11c:** Smoothing shall use `smooth_path` in the geometry module: a cubic Hermite-style interpolating curve in **x, y, z** that passes through consecutive original pose positions as segment endpoints and inserts only intermediate points between them (densification, not regression that discards vertices).
+- **R11d:** For paths with fewer than three poses, smoothing shall be a no-op (return poses unchanged).
+- **R11e:** Orientation on smoothed poses shall be derived from the horizontal (x–y) tangent of the curve; the library shall expose `smooth_path` on the public `lanelet2_generator` API.
+- **R11f:** `generate()` shall apply smoothing **after** `filter_path` and **before** lanelet construction, for all input formats that use the unified pipeline.
+
+### 2.5 Lanelet Splitting
 
 - **R13:** Support `split_distance`: split lanelet every M meters along the path.
 - **R14:** Support `split_direction`: split when direction changes more than DEG degrees within WINDOW_M meters.
 - **R15:** Segments shall share boundary nodes for routing connectivity (as in bag2lanelet).
 - **R16:** Splitting logic shall match the behavior of the original bag2lanelet package.
 
-### 2.5 Lanelet Export
+### 2.6 Lanelet Export
 
 - **R17:** Output OSM XML compatible with Lanelet2 and Autoware.
 - **R18:** Support MGRS coordinate system with configurable code.
@@ -58,22 +66,24 @@ This document defines the functional requirements for `lanelet2_generator` and s
 - **R19a:** Support optional bidirectional lanelet generation, creating reverse-direction lanelets from the same path geometry.
 - **R20:** Output filename format: `YY-MM-DD-HH-MM-SS-lanelet2_map.osm`.
 
-### 2.6 ROS 2 Integration
+### 2.7 ROS 2 Integration
 
 - **R21:** Provide a node that advertises `/api/routing/set_route_points` (SetRoutePoints).
 - **R22:** Service request shall include `goal` (Pose) and `waypoints` (Pose[]).
 - **R23:** On service call: convert route points to poses, run pipeline, save to output path.
 - **R24:** Output path and other generation parameters shall be configurable via launch file.
+- **R24a:** The route node shall expose a `smooth_window` parameter (default `0`), consistent with the library and CLI.
 - **R25:** Use `autoware_adapi_v1_msgs/srv/SetRoutePoints` for service type.
 
-### 2.7 CLI
+### 2.8 CLI
 
 - **R26:** Provide a CLI script with the same options as bag2lanelet.
 - **R27:** CLI shall accept input path and output directory as positional arguments.
 - **R28:** Support all filter and split options via command-line flags.
 - **R28a:** CLI shall support optional `--map-projector-info` and, when provided, use `mgrs_grid` from that file (overriding `--mgrs`).
+- **R28b:** CLI shall support `--smooth-window` to set `smooth_window` for `generate()`.
 
-### 2.8 LAS/LAZ Point Cloud Conversion
+### 2.9 LAS/LAZ Point Cloud Conversion
 
 - **R29:** Provide a CLI to convert UTM LAS/LAZ point clouds into local MGRS coordinates and write PCD output.
 - **R30:** The converter shall generate `map_projector_info.yaml` with keys: `projector_type`, `vertical_datum`, `mgrs_grid`.
@@ -82,7 +92,7 @@ This document defines the functional requirements for `lanelet2_generator` and s
 - **R33:** The converter shall support color output from LAS dimensions: `rgb`, `intensity`, or `classification` (including `auto` mode).
 - **R34:** Default output PCD filename shall be `pointcloud_map.pcd` when `--pcd-name` is not provided.
 
-### 2.9 Docker Wrappers
+### 2.10 Docker Wrappers
 
 - **R35:** `docker/lanelet2_generator.sh` shall default output directory to the input file directory when output is omitted.
 - **R36:** Docker wrappers shall accept pass-through CLI flags with or without a `--` separator.
@@ -95,14 +105,14 @@ When extending or modifying the package, the following requirements should be co
 
 ### 3.1 Backward Compatibility
 
-- **C1:** Changes to the public API (`load_path`, `filter_path`, `generate`, `to_lanelet`) shall preserve existing function signatures or provide deprecation periods.
+- **C1:** Changes to the public API (`load_path`, `filter_path`, `smooth_path`, `generate`, `to_lanelet`) shall preserve existing function signatures or provide deprecation periods.
 - **C2:** Changes to CLI arguments shall maintain default values where possible.
 - **C3:** Service interface (`/api/routing/set_route_points`) shall remain compatible with Autoware clients.
 
 ### 3.2 Extensibility
 
 - **E1:** New input formats shall be added via new readers and registered in `load_path`.
-- **E2:** New filters shall be added to the `filtering` module and composed in `filter_path`.
+- **E2:** New filters shall be added to the `filtering` module and composed in `filter_path`. New geometric path operations (e.g., alternative smoothers) shall live in the `geometry` module and be composed in `generate()` after filtering.
 - **E3:** Alternative export formats (e.g., GeoJSON) may be added without changing the core pipeline.
 
 ### 3.3 Performance
@@ -156,3 +166,4 @@ When extending or modifying the package, the following requirements should be co
 | 0.4.0   | 2026-04-15 | Added LAS/LAZ UTM-to-local-MGRS conversion CLI with PCD export, projector YAML generation, CRS overrides, downsampling, and color modes (`rgb`, `intensity`, `classification`, `auto`). Added requirements R29–R33. |
 | 0.5.0   | 2026-04-15 | Added CLI support for `--map-projector-info` (`mgrs_grid` override), default LAS output filename `pointcloud_map.pcd`, and Docker wrapper behavior updates (optional output dir defaulting to input folder, optional `--` separator). Added requirements R28a, R34, R35, R36. |
 | 0.6.0   | 2026-04-16 | Added optional bidirectional lanelet generation in library/CLI/ROS node and launch parameter support. Added requirement R19a and removed bidirectional generation from out-of-scope. |
+| 0.7.0   | 2026-04-16 | Documented optional path smoothing (`smooth_path`, `smooth_window`): Hermite-style interpolating densification after filtering; CLI `--smooth-window`, ROS/launch `smooth_window`. Added requirements R11b–R11f, R24a, R28b; renumbered sections 2.4–2.10. |

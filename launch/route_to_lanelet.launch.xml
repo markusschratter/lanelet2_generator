@@ -9,6 +9,7 @@
   <arg name="split_distance" default="500" description="Split every M meters" />
   <arg name="split_direction_deg" default="" description="Split on direction change [deg]" />
   <arg name="split_direction_window_m" default="" description="Direction change window [m]" />
+  <arg name="smooth_window" default="0" description="Interpolating smoothing subdivisions per segment; 0 disables" />
   <arg name="bidirectional" default="true" description="Generate opposite-direction lanelets" />
 
   <node pkg="lanelet2_generator" exec="route_to_lanelet_node" name="route_to_lanelet_node" output="screen">
@@ -21,6 +22,7 @@
     <param name="split_distance" value="$(var split_distance)" />
     <param name="split_direction_deg" value="$(var split_direction_deg)" />
     <param name="split_direction_window_m" value="$(var split_direction_window_m)" />
+    <param name="smooth_window" value="$(var smooth_window)" />
     <param name="bidirectional" value="$(var bidirectional)" />
   </node>
 </launch>
