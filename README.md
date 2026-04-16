@@ -261,6 +261,7 @@ python3 -m lanelet2_generator.cli /path/to/bag data -l 3.0 -m 33TWN
 | `--interval` | float float | 0.1 2.0 | [Bag/MCAP only] Min and max interval [m] between tf poses |
 | `--split-distance` | float | 500 | Split lanelet every M meters along path |
 | `--split-direction` | float float | — | Split when direction changes more than DEG deg within M m (e.g. `80 30`) |
+| `--no-bidirectional` | flag | false | Disable lanelets in both directions (enabled by default) |
 
 ### ROS 2 service node (only ROS component)
 
@@ -290,6 +291,7 @@ The node advertises `/api/routing/set_route_points` (`autoware_adapi_v1_msgs/srv
 | `split_distance` | 500 | Split every M meters |
 | `split_direction_deg` | — | Split on direction change [deg] |
 | `split_direction_window_m` | — | Direction change window [m] |
+| `bidirectional` | true | Generate lanelets in both directions |
 
 ### LAS/LAZ to local MGRS PCD
 

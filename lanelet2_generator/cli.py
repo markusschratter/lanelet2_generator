@@ -31,6 +31,13 @@ def main():
     parser.add_argument("--split-direction", type=float, nargs=2, default=None, metavar=("DEG", "M"),
         help="split when direction changes more than DEG deg within M m (e.g. 80 30)")
     parser.add_argument("-s", "--speed-limit", type=float, default=30, metavar="KMH", help="speed limit [km/h]")
+    parser.add_argument(
+        "--no-bidirectional",
+        dest="bidirectional",
+        action="store_false",
+        default=True,
+        help="disable opposite-direction lanelet generation",
+    )
 
     args = parser.parse_args()
     input_path = Path(args.input)
@@ -56,6 +63,7 @@ def main():
         max_direction_change_deg=max_deg,
         direction_change_window_m=window_m,
         speed_limit=args.speed_limit,
+        bidirectional=args.bidirectional,
     )
     print(f"Saved: {result}")
 

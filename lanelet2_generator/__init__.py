@@ -55,6 +55,7 @@ def generate(
     max_direction_change_deg=None,
     direction_change_window_m=None,
     speed_limit=30,
+    bidirectional=True,
 ):
     """
     Generate lanelet2 map from input path or pose array.
@@ -79,6 +80,7 @@ def generate(
         max_direction_change_deg: Split on direction change (deg)
         direction_change_window_m: Window for direction change [m]
         speed_limit: Speed limit [km/h]
+        bidirectional: Generate opposite-direction lanelets too
 
     Returns:
         Path to saved .osm file
@@ -135,4 +137,5 @@ def generate(
         max_direction_change_deg=max_direction_change_deg,
         direction_change_window_m=direction_change_window_m,
         speed_limit=speed_limit,
+        bidirectional=bidirectional,
     )
