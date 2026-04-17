@@ -93,6 +93,7 @@ def to_lanelet(
     direction_change_window_m=None,
     speed_limit=30,
     bidirectional=True,
+    output_file=None,
 ):
     """
     Build lanelet2 map from poses and save to output_dir.
@@ -183,6 +184,10 @@ def to_lanelet(
             m.add_relation(rev_left_way, rev_right_way, rev_center_way, speed_limit=speed_limit)
 
     os.makedirs(output_dir, exist_ok=True)
-    filename = os.path.join(output_dir, datetime.now().strftime("%y-%m-%d-%H-%M-%S") + "-lanelet2_map.osm")
+    if output_file:
+        filename = output_file if os.path.isabs(output_file) else os.path.join(output_dir, output_file)
+    else:
+        filename = os.path.join(output_dir, datetime.now().strftime("%y-%m-%d-%H-%M-%S") + "-lanelet2_map.osm")
+    os.makedirs(os.path.dirname(filename) or output_dir, exist_ok=True)
     m.save(filename)
     return filename

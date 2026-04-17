@@ -61,6 +61,7 @@ docker build -f "${REPO_ROOT}/docker/Dockerfile" -t "${IMAGE_NAME}" "${REPO_ROOT
 EXTRA_ARGS=("$@")
 EXTRA_VOLUMES=()
 map_mount_id=0
+output_mount_id=0
 
 # If --map-projector-info points outside mounted input/output dirs, mount it.
 for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
@@ -103,6 +104,57 @@ for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
     EXTRA_ARGS[$i]="--map-projector-info=${container_map_path}"
   else
     EXTRA_ARGS[$((i + 1))]="${container_map_path}"
+  fi
+done
+
+# If --output-file is an absolute host path, map it into container.
+for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
+  arg="${EXTRA_ARGS[$i]}"
+  out_path=""
+  inline=0
+
+  if [[ "${arg}" == "--output-file" ]]; then
+    if (( i + 1 < ${#EXTRA_ARGS[@]} )); then
+      out_path="${EXTRA_ARGS[$((i + 1))]}"
+    fi
+  elif [[ "${arg}" == --output-file=* ]]; then
+    out_path="${arg#--output-file=}"
+    inline=1
+  fi
+
+  if [[ -z "${out_path}" || "${out_path}" != /* ]]; then
+    continue
+  fi
+
+  out_base="$(basename "${out_path}")"
+  container_out_path=""
+
+  if [[ "${out_path}" == "${OUTPUT_DIR_ABS}"/* || "${out_path}" == "${OUTPUT_DIR_ABS}" ]]; then
+    rel="${out_path#${OUTPUT_DIR_ABS}/}"
+    rel="${rel#./}"
+    if [[ -z "${rel}" || "${rel}" == "${OUTPUT_DIR_ABS}" ]]; then
+      rel="${out_base}"
+    fi
+    container_out_path="/output/${rel}"
+  elif [[ "${INPUT_DIR}" == "${OUTPUT_DIR_ABS}" && ( "${out_path}" == "${INPUT_DIR}"/* || "${out_path}" == "${INPUT_DIR}" ) ]]; then
+    rel="${out_path#${INPUT_DIR}/}"
+    rel="${rel#./}"
+    if [[ -z "${rel}" || "${rel}" == "${INPUT_DIR}" ]]; then
+      rel="${out_base}"
+    fi
+    container_out_path="/input/${rel}"
+  else
+    out_dir="$(dirname "${out_path}")"
+    mount_point="/explicit_output_${output_mount_id}"
+    output_mount_id=$((output_mount_id + 1))
+    EXTRA_VOLUMES+=("-v" "${out_dir}:${mount_point}")
+    container_out_path="${mount_point}/${out_base}"
+  fi
+
+  if (( inline == 1 )); then
+    EXTRA_ARGS[$i]="--output-file=${container_out_path}"
+  else
+    EXTRA_ARGS[$((i + 1))]="${container_out_path}"
   fi
 done
 

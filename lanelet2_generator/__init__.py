@@ -68,6 +68,7 @@ def generate(
     speed_limit=30,
     bidirectional=True,
     smooth_window=0,
+    output_file=None,
 ):
     """
     Generate lanelet2 map from input path or pose array.
@@ -95,6 +96,8 @@ def generate(
         bidirectional: Generate opposite-direction lanelets too
         smooth_window: Interpolating smoothing subdivisions per segment;
             0 disables
+        output_file: Optional exact output .osm filename (absolute or relative
+            to output_dir)
 
     Returns:
         Path to saved .osm file
@@ -153,4 +156,5 @@ def generate(
         direction_change_window_m=direction_change_window_m,
         speed_limit=speed_limit,
         bidirectional=bidirectional,
+        output_file=output_file,
     )

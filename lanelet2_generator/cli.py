@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--split-direction", type=float, nargs=2, default=None, metavar=("DEG", "M"),
         help="split when direction changes more than DEG deg within M m (e.g. 80 30)")
     parser.add_argument("-s", "--speed-limit", type=float, default=30, metavar="KMH", help="speed limit [km/h]")
+    parser.add_argument("--output-file", default=None, help="exact output .osm filename (absolute or relative to output dir)")
     parser.add_argument(
         "--smooth-window",
         type=int,
@@ -72,6 +73,7 @@ def main():
         speed_limit=args.speed_limit,
         bidirectional=args.bidirectional,
         smooth_window=args.smooth_window,
+        output_file=args.output_file,
     )
     print(f"Saved: {result}")
 

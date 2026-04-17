@@ -210,7 +210,8 @@ Run lanelet generation:
 docker/lanelet2_generator.sh \
   data/mission.yaml \
   data \
-  --map-projector-info data/map_projector_info.yaml -l 2.5 -s 5
+  --map-projector-info data/map_projector_info.yaml -l 2.5 -s 5 \
+  --output-file lanelet2_map.osm
 ```
 
 Notes:
@@ -270,6 +271,7 @@ python3 -m lanelet2_generator.cli /path/to/bag data -l 3.0 -m 33TWN
 | `--interval` | float float | 0.1 2.0 | [Bag/MCAP only] Min and max interval [m] between tf poses |
 | `--split-distance` | float | 500 | Split lanelet every M meters along path |
 | `--split-direction` | float float | — | Split when direction changes more than DEG deg within M m (e.g. `80 30`) |
+| `--output-file` | string | — | Exact output `.osm` filename (absolute or relative to output dir) |
 | `--smooth-window` | int | 0 | Interpolating smoothing subdivisions per segment; original points stay on the path |
 | `--no-bidirectional` | flag | false | Disable lanelets in both directions (enabled by default) |
 
