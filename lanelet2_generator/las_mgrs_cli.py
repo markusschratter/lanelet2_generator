@@ -154,8 +154,36 @@ def main():
     parser = argparse.ArgumentParser(
         description="Convert UTM LAS/LAZ to local MGRS frame, optional downsample, write PCD + map_projector_info.yaml."
     )
-    parser.add_argument("input", type=Path, help="Path to .las / .laz")
-    parser.add_argument("output_dir", type=Path, help="Output directory")
+    parser.add_argument(
+        "input",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="Path to .las / .laz (or use --input)",
+    )
+    parser.add_argument(
+        "output_dir",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="Output directory, or path ending in .pcd (or use --output)",
+    )
+    parser.add_argument(
+        "--input",
+        dest="input_opt",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Input .las / .laz (alternative to positional)",
+    )
+    parser.add_argument(
+        "--output",
+        dest="output_opt",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Output directory or full path to .pcd file (alternative to positional)",
+    )
     parser.add_argument("--epsg", type=int, default=None, help="Override CRS: EPSG code")
     parser.add_argument(
         "--utm-frame",
@@ -188,7 +216,11 @@ def main():
     parser.add_argument("--max-points", type=int, default=None, help="Random subsample to at most N points")
     parser.add_argument("--random-seed", type=int, default=42, help="Seed for --max-points")
 
-    parser.add_argument("--pcd-name", default="pointcloud_map.pcd", help="Output PCD filename inside output_dir")
+    parser.add_argument(
+        "--pcd-name",
+        default="pointcloud_map.pcd",
+        help="Output PCD filename when output is a directory (ignored if output path ends in .pcd)",
+    )
     parser.add_argument("--yaml-name", default="map_projector_info.yaml", help="Output projector YAML filename")
     parser.add_argument("--map-config-name", default="map_config.yaml", help="Output map config YAML filename")
     parser.add_argument("--ascii-pcd", action="store_true", help="Write ASCII PCD instead of binary")
@@ -201,21 +233,38 @@ def main():
     import mgrs
     import open3d as o3d
 
-    if not args.input.exists():
-        raise FileNotFoundError(f"Input not found: {args.input}")
-    if args.input.suffix.lower() not in (".las", ".laz"):
+    inp = args.input_opt if args.input_opt is not None else args.input
+    raw_out = args.output_opt if args.output_opt is not None else args.output_dir
+    if inp is None:
+        parser.error("Provide input as first argument or --input PATH")
+    inp = Path(inp)
+
+    if raw_out is not None:
+        raw_out = Path(raw_out)
+        if raw_out.suffix.lower() == ".pcd":
+            output_dir = raw_out.parent
+            pcd_name = raw_out.name
+        else:
+            output_dir = raw_out
+            pcd_name = args.pcd_name
+    else:
+        output_dir = inp.parent
+        pcd_name = args.pcd_name
+
+    if not inp.exists():
+        raise FileNotFoundError(f"Input not found: {inp}")
+    if inp.suffix.lower() not in (".las", ".laz"):
         raise ValueError(
-            f"Unsupported input format: {args.input} (expected .las or .laz)"
+            f"Unsupported input format: {inp} (expected .las or .laz)"
         )
 
-    output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        las = laspy.read(str(args.input))
+        las = laspy.read(str(inp))
     except Exception as e:
         msg = str(e)
-        if "No LazBackend selected" in msg and args.input.suffix.lower() == ".laz":
+        if "No LazBackend selected" in msg and inp.suffix.lower() == ".laz":
             raise RuntimeError(
                 "Reading .laz requires a laspy backend. Install one with:\n"
                 "  pip install lazrs\n"
@@ -276,7 +325,7 @@ def main():
     if args.voxel_size is not None and args.voxel_size > 0:
         pcd = pcd.voxel_down_sample(voxel_size=float(args.voxel_size))
 
-    pcd_path = output_dir / args.pcd_name
+    pcd_path = output_dir / pcd_name
     o3d.io.write_point_cloud(str(pcd_path), pcd, write_ascii=bool(args.ascii_pcd))
 
     doc = {

@@ -8,25 +8,65 @@ IMAGE_NAME="${IMAGE_NAME:-lanelet2-generator:latest}"
 usage() {
   cat <<'EOF'
 Usage:
-  docker/lanelet2_generator.sh <input> [output_dir] [-- lanelet flags...]
+  docker/lanelet2_generator.sh [options] [-- lanelet flags...]
+
+  Positional:
+    docker/lanelet2_generator.sh <input> [output_dir|output.osm] [-- ...]
+
+  Flags:
+    --input PATH    Input: CSV, PLY, YAML, MCAP, or rosbag2 directory
+    --output PATH   Output directory, or full path to .osm (sets directory + --output-file)
 
 Examples:
-  docker/lanelet2_generator.sh data_apex/erding_2.yaml output -- --mgrs 32UQU -l 2.5 -s 5
-  docker/lanelet2_generator.sh /abs/path/trajectory.ply /abs/path/output -- --center --split-distance 200
+  docker/lanelet2_generator.sh --input data/mission.yaml --output data/out -- --mgrs 32UQU --width 2.5
+  docker/lanelet2_generator.sh --input traj.ply --output lanelet2_map.osm --map-projector-info map_projector_info.yaml
 
 Notes:
-  - If output_dir is omitted, the input file directory is used.
+  - If output is omitted, the input file directory is used.
   - Everything after '--' is passed directly to lanelet2_generator.cli.
 EOF
 }
 
-if [[ $# -lt 1 ]]; then
-  usage
-  exit 1
+INPUT_PATH=""
+OUTPUT_PATH=""
+REMAINING=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --input)
+      if [[ $# -lt 2 ]]; then echo "--input requires a path" >&2; exit 1; fi
+      INPUT_PATH="$2"
+      shift 2
+      ;;
+    --output)
+      if [[ $# -lt 2 ]]; then echo "--output requires a path" >&2; exit 1; fi
+      OUTPUT_PATH="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      REMAINING+=("$@")
+      break
+      ;;
+    *)
+      REMAINING+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "${INPUT_PATH}" ]]; then
+  if [[ ${#REMAINING[@]} -eq 0 ]]; then
+    usage
+    exit 1
+  fi
+  INPUT_PATH="${REMAINING[0]}"
+  REMAINING=("${REMAINING[@]:1}")
 fi
 
-INPUT_PATH="$1"
-shift
+if [[ -z "${OUTPUT_PATH}" && ${#REMAINING[@]} -gt 0 && "${REMAINING[0]}" != -* ]]; then
+  OUTPUT_PATH="${REMAINING[0]}"
+  REMAINING=("${REMAINING[@]:1}")
+fi
 
 if [[ "${INPUT_PATH}" != /* ]]; then
   INPUT_PATH="$(realpath "${INPUT_PATH}")"
@@ -36,29 +76,40 @@ if [[ ! -e "${INPUT_PATH}" ]]; then
   exit 1
 fi
 
-OUTPUT_DIR=""
-if [[ $# -gt 0 && "$1" != "--" && "$1" != -* ]]; then
-  OUTPUT_DIR="$1"
-  shift
-  if [[ "${OUTPUT_DIR}" != /* ]]; then
-    OUTPUT_DIR="$(realpath -m "${OUTPUT_DIR}")"
-  fi
-else
+if [[ -z "${OUTPUT_PATH}" ]]; then
   OUTPUT_DIR="$(dirname "${INPUT_PATH}")"
+else
+  if [[ "${OUTPUT_PATH}" != /* ]]; then
+    OUTPUT_PATH="$(realpath -m "${OUTPUT_PATH}")"
+  fi
+  if [[ "${OUTPUT_PATH}" == *.osm || "${OUTPUT_PATH}" == *.OSM ]]; then
+    OUTPUT_DIR="$(dirname "${OUTPUT_PATH}")"
+  else
+    OUTPUT_DIR="${OUTPUT_PATH}"
+  fi
 fi
 mkdir -p "${OUTPUT_DIR}"
-
-if [[ $# -gt 0 && "$1" == "--" ]]; then
-  shift
-fi
 
 INPUT_DIR="$(dirname "${INPUT_PATH}")"
 OUTPUT_DIR_ABS="${OUTPUT_DIR}"
 INPUT_BASENAME="$(basename "${INPUT_PATH}")"
 
+EXTRA_ARGS=("${REMAINING[@]}")
+
+# If --output was a .osm path, pass it as --output-file for the CLI (host path; rewritten below).
+has_output_file=0
+for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
+  if [[ "${EXTRA_ARGS[$i]}" == "--output-file" || "${EXTRA_ARGS[$i]}" == --output-file=* ]]; then
+    has_output_file=1
+    break
+  fi
+done
+if [[ -n "${OUTPUT_PATH}" && ("${OUTPUT_PATH}" == *.osm || "${OUTPUT_PATH}" == *.OSM) && "${has_output_file}" -eq 0 ]]; then
+  EXTRA_ARGS=("--output-file" "${OUTPUT_PATH}" "${EXTRA_ARGS[@]}")
+fi
+
 docker build -f "${REPO_ROOT}/docker/Dockerfile" -t "${IMAGE_NAME}" "${REPO_ROOT}"
 
-EXTRA_ARGS=("$@")
 EXTRA_VOLUMES=()
 map_mount_id=0
 output_mount_id=0
@@ -129,20 +180,21 @@ for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
   out_base="$(basename "${out_path}")"
   container_out_path=""
 
-  if [[ "${out_path}" == "${OUTPUT_DIR_ABS}"/* || "${out_path}" == "${OUTPUT_DIR_ABS}" ]]; then
-    rel="${out_path#${OUTPUT_DIR_ABS}/}"
-    rel="${rel#./}"
-    if [[ -z "${rel}" || "${rel}" == "${OUTPUT_DIR_ABS}" ]]; then
-      rel="${out_base}"
-    fi
-    container_out_path="/output/${rel}"
-  elif [[ "${INPUT_DIR}" == "${OUTPUT_DIR_ABS}" && ( "${out_path}" == "${INPUT_DIR}"/* || "${out_path}" == "${INPUT_DIR}" ) ]]; then
+  # Same host dir for input and output: only /input exists in the container.
+  if [[ "${INPUT_DIR}" == "${OUTPUT_DIR_ABS}" && ( "${out_path}" == "${INPUT_DIR}"/* || "${out_path}" == "${INPUT_DIR}" ) ]]; then
     rel="${out_path#${INPUT_DIR}/}"
     rel="${rel#./}"
     if [[ -z "${rel}" || "${rel}" == "${INPUT_DIR}" ]]; then
       rel="${out_base}"
     fi
     container_out_path="/input/${rel}"
+  elif [[ "${out_path}" == "${OUTPUT_DIR_ABS}"/* || "${out_path}" == "${OUTPUT_DIR_ABS}" ]]; then
+    rel="${out_path#${OUTPUT_DIR_ABS}/}"
+    rel="${rel#./}"
+    if [[ -z "${rel}" || "${rel}" == "${OUTPUT_DIR_ABS}" ]]; then
+      rel="${out_base}"
+    fi
+    container_out_path="/output/${rel}"
   else
     out_dir="$(dirname "${out_path}")"
     mount_point="/explicit_output_${output_mount_id}"
@@ -158,12 +210,12 @@ for ((i = 0; i < ${#EXTRA_ARGS[@]}; i++)); do
   fi
 done
 
-DOCKER_ARGS=(
-  --rm
-  -w /app
-  "${IMAGE_NAME}"
-  python -m lanelet2_generator.cli
-)
+CONTAINER_INPUT="/input/${INPUT_BASENAME}"
+if [[ "${INPUT_DIR}" == "${OUTPUT_DIR_ABS}" ]]; then
+  CONTAINER_OUTPUT="/input"
+else
+  CONTAINER_OUTPUT="/output"
+fi
 
 if [[ "${INPUT_DIR}" == "${OUTPUT_DIR_ABS}" ]]; then
   DOCKER_ARGS=(
@@ -172,8 +224,8 @@ if [[ "${INPUT_DIR}" == "${OUTPUT_DIR_ABS}" ]]; then
     -w /app
     "${IMAGE_NAME}"
     python -m lanelet2_generator.cli
-    "/input/${INPUT_BASENAME}"
-    "/input"
+    --input "${CONTAINER_INPUT}"
+    --output "${CONTAINER_OUTPUT}"
   )
 else
   DOCKER_ARGS=(
@@ -183,8 +235,8 @@ else
     -w /app
     "${IMAGE_NAME}"
     python -m lanelet2_generator.cli
-    "/input/${INPUT_BASENAME}"
-    "/output"
+    --input "${CONTAINER_INPUT}"
+    --output "${CONTAINER_OUTPUT}"
   )
 fi
 

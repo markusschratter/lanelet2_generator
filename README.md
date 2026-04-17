@@ -8,25 +8,69 @@ This package is based on [bag2lanelet](https://github.com/autowarefoundation/aut
 
 ### Docker
 
+**Point cloud (LAS/LAZ → PCD + YAML)** — source CRS uses `--utm-frame` (or `--epsg`); this is separate from lanelet MGRS.
+
+| | |
+|---|---|
+| **input** | Positional path, or `--input`: `input.las` / `input.laz` |
+| **output** | Positional path, or `--output`: output **directory**, or a full path ending in **`.pcd`**. If omitted, the input file’s directory is used. Writes `map_projector_info.yaml` and `map_config.yaml` next to the PCD. |
+
 ```bash
-# LAS/LAZ -> pointcloud_map.pcd + map_projector_info.yaml + map_config.yaml
+# LAS/LAZ -> pointcloud_map.pcd + map_projector_info.yaml + map_config.yaml (output defaults to input folder)
 docker/pointcloud_converter.sh data/merged_clean.las --utm-frame 32N --voxel-size 0.1 --color-by auto
 
-# PLY -> lanelet2 .osm (output defaults to input folder)
-docker/lanelet2_generator.sh data/traj_fusion_gps.ply --map-projector-info data/map_projector_info.yaml -l 4.0 -s 20 --split-distance 100
+# Explicit input/output flags and exact PCD path:
+docker/pointcloud_converter.sh --input data/merged_clean.las --output data/pointcloud_map.pcd \
+  --utm-frame 32N --voxel-size 0.1 --color-by auto
+```
 
+**Lanelet (trajectory → `.osm`)** — map frame uses `--mgrs` or `--map-projector-info` (`mgrs_grid`); not `--utm-frame`.
+
+| | |
+|---|---|
+| **input** | `<input>` (positional) or `--input`: CSV, PLY, YAML, MCAP, or rosbag2 directory |
+| **output** | `<output_lanelet>` (positional) or `--output`: directory for the generated `.osm`. If omitted, the input file’s directory is used. |
+| **`.osm` name** | `--output-file` (optional): exact filename; default is timestamped `YY-MM-DD-HH-MM-SS-lanelet2_map.osm` |
+
+```bash
+# PLY -> lanelet2 .osm (output defaults to input folder)
+docker/lanelet2_generator.sh data/traj_fusion_gps.ply --map-projector-info data/map_projector_info.yaml --width 4.0 --speed-limit 20 --split-distance 100
+# explicit input/output flags (optional):
+# docker/lanelet2_generator.sh -- --input /input/traj.ply --output /output --map-projector-info /input/map_projector_info.yaml --width 4.0 --speed-limit 20
+```
+
+```bash
 # Merge multiple Lanelet2 .osm files (two, three, …) — inputs and -o must sit under one directory tree
 docker/merge_lanelets.sh data/map_a.osm data/map_b.osm data/map_c.osm -o data/merged.osm
 ```
 
 ### Direct Python 3
 
+**Point cloud (`las_mgrs_cli`)** — same input/output idea as `docker/pointcloud_converter.sh`: `--utm-frame` / `--epsg` for the LAS/LAZ CRS.
+
+| | |
+|---|---|
+| **input** | Positional path or `--input`: `input.las` / `input.laz` |
+| **output** | Positional path or `--output`: output **directory**, or a path ending in **`.pcd`**. If omitted, the input file’s directory is used (PCD name from `--pcd-name`, default `pointcloud_map.pcd`). |
+
+**Lanelet (`lanelet2_generator.cli`)** — same as Docker lanelet: `--mgrs` / `--map-projector-info`; optional `--input`, `--output`, `--output-file`.
+
+| | |
+|---|---|
+| **input** | positional `input` or `--input` |
+| **output** | positional `output_lanelet` or `--output` (directory for `.osm`) |
+| **`.osm` name** | `--output-file` (optional) |
+
 ```bash
 # LAS/LAZ -> pointcloud_map.pcd + map_projector_info.yaml + map_config.yaml
 python3 -m lanelet2_generator.las_mgrs_cli data/merged_clean.las data --utm-frame 32N --voxel-size 0.1 --color-by auto
 
+# Same with flags and an explicit .pcd path:
+python3 -m lanelet2_generator.las_mgrs_cli --input data/merged_clean.las --output data/pointcloud_map.pcd \
+  --utm-frame 32N --voxel-size 0.1 --color-by auto
+
 # PLY -> lanelet2 .osm
-python3 -m lanelet2_generator.cli data/traj_fusion_gps.ply data --map-projector-info data/map_projector_info.yaml -l 4.0 -s 20 --split-distance 100
+python3 -m lanelet2_generator.cli data/traj_fusion_gps.ply data --map-projector-info data/map_projector_info.yaml --width 4.0 --speed-limit 20 --split-distance 100
 
 # Merge multiple .osm maps (IDs remapped; default offsets avoid collisions)
 python3 -m lanelet2_generator.merge_lanelets_cli data/map_a.osm data/map_b.osm -o data/merged.osm
@@ -199,8 +243,15 @@ Run point cloud conversion (LAS/LAZ -> PCD + YAML):
 
 ```bash
 docker/pointcloud_converter.sh \
-  data/input_cloud.laz \
-  data \
+  --input data/input_cloud.laz \
+  --output data/pointcloud_map.pcd \
+  --utm-frame 32N --voxel-size 0.1 --color-by auto
+```
+
+Or use positional arguments (output directory optional):
+
+```bash
+docker/pointcloud_converter.sh data/input_cloud.laz data \
   --utm-frame 32N --voxel-size 0.1 --color-by auto
 ```
 
@@ -210,15 +261,16 @@ Run lanelet generation:
 docker/lanelet2_generator.sh \
   data/mission.yaml \
   data \
-  --map-projector-info data/map_projector_info.yaml -l 2.5 -s 5 \
+  --map-projector-info data/map_projector_info.yaml --width 2.5 --speed-limit 5 \
   --output-file lanelet2_map.osm
 ```
 
 Notes:
 
 - Both scripts auto-build the Docker image if needed.
-- Input and output can be different folders; if output is omitted, the input folder is used.
-- You can pass options directly after required args; using `--` as a separator is optional.
+- For **point cloud**: use `--input` / `--output` or positional paths; `--output` may be a directory or a full `.pcd` path. If output is omitted, the input folder is used.
+- For **lanelet**: input and output can be different folders; if output is omitted, the input folder is used.
+- You can pass options directly after required args; using `--` as a separator is optional (see `docker/pointcloud_converter.sh` usage).
 
 ### CLI (plain Python, not ROS)
 
@@ -226,6 +278,10 @@ Notes:
 
 ```bash
 python3 -m lanelet2_generator.cli <input> <output_dir> [options]
+# or
+python3 -m lanelet2_generator.cli --input <path> <output_dir> [options]
+# or
+python3 -m lanelet2_generator.cli --input <path> --output <output_dir> [options]
 # or, after pip install:
 lanelet2_generator <input> <output_dir> [options]
 ```
@@ -234,36 +290,38 @@ lanelet2_generator <input> <output_dir> [options]
 
 ```bash
 # From CSV
-python3 -m lanelet2_generator.cli data/waypoints.csv data -l 3.0 -m 33TWN
+python3 -m lanelet2_generator.cli data/waypoints.csv data --width 3.0 --mgrs 33TWN
 
 # From PLY
-python3 -m lanelet2_generator.cli data/trajectory.ply data -l 2.5 -m 33TWN
+python3 -m lanelet2_generator.cli data/trajectory.ply data --width 2.5 --mgrs 33TWN
 
 # From waypoint YAML (.yaml/.yml)
-python3 -m lanelet2_generator.cli data/mission.yaml data -l 2.5 -m 32UQU -s 5
+python3 -m lanelet2_generator.cli data/mission.yaml data --width 2.5 --mgrs 32UQU --speed-limit 5
 
-# Use map_projector_info.yaml to auto-set MGRS (no -m needed)
+# Use map_projector_info.yaml to auto-set MGRS (no --mgrs needed)
 python3 -m lanelet2_generator.cli data/traj_fusion_gps.ply data \
-  --map-projector-info data/map_projector_info.yaml -l 4.0 -s 20 --split-distance 100
+  --map-projector-info data/map_projector_info.yaml --width 4.0 --speed-limit 20 --split-distance 100
 
 # From MCAP bag (requires ROS env / rosbag2)
 source /opt/ros/humble/setup.bash
-python3 -m lanelet2_generator.cli data/recorded.mcap data -l 3.0 -m 33TWN
+python3 -m lanelet2_generator.cli data/recorded.mcap data --width 3.0 --mgrs 33TWN
 
 # From rosbag2 directory (sqlite3)
-python3 -m lanelet2_generator.cli /path/to/bag data -l 3.0 -m 33TWN
+python3 -m lanelet2_generator.cli /path/to/bag data --width 3.0 --mgrs 33TWN
 ```
 
 **CLI parameters:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `input` | path | (required) | Input: CSV, PLY, YAML, MCAP file, or rosbag2 directory |
-| `output_lanelet` | path | (required) | Output directory for .osm file |
-| `-l`, `--width` | float | 2.0 | Lane width [m] |
-| `-m`, `--mgrs` | string | 33TWN | MGRS code |
+| `input` | path | — | Input: CSV, PLY, YAML, MCAP file, or rosbag2 directory (positional; omit if using `--input`) |
+| `--input` | path | — | Same as `input`; explicit flag for scripts and Docker. |
+| `output_lanelet` | path | — | Output directory for .osm file (positional; omit if using `--output`) |
+| `--output` | path | — | Same as `output_lanelet`; explicit flag for scripts and Docker. |
+| `--width` | float | 2.0 | Lane width [m] |
+| `--mgrs` | string | 33TWN | MGRS code |
 | `--map-projector-info` | path | — | Optional `map_projector_info.yaml`; uses `mgrs_grid` from file (overrides `--mgrs`) |
-| `-s`, `--speed-limit` | float | 30 | Speed limit [km/h] |
+| `--speed-limit` | float | 30 | Speed limit [km/h] |
 | `--offset` | float float float | 0 0 0 | Offset [m] from centerline (x y z) |
 | `--center` | flag | false | Add centerline to lanelet |
 | `--min-distance` | float | 1.0 | Min distance [m] between consecutive points |
@@ -319,8 +377,12 @@ Converts UTM LAS/LAZ point clouds to the same local MGRS frame used by this pack
 **Syntax:**
 
 ```bash
-python3 -m lanelet2_generator.las_mgrs_cli <input.las|input.laz> <output_dir> [options]
+python3 -m lanelet2_generator.las_mgrs_cli <input.las|input.laz> [output_dir|output.pcd] [options]
+# or
+python3 -m lanelet2_generator.las_mgrs_cli --input <path> [--output <dir_or.pcd>] [options]
 ```
+
+If `output` is omitted, files are written to the input file’s directory. If `output` is a path ending in `.pcd`, that path sets both the directory and the PCD filename (`--pcd-name` is ignored in that case).
 
 **Examples:**
 
@@ -332,13 +394,17 @@ python3 -m lanelet2_generator.las_mgrs_cli data/input_cloud.laz data \
 # UTM frame notation (instead of EPSG)
 python3 -m lanelet2_generator.las_mgrs_cli data/input_cloud.laz data \
   --utm-frame 32N --voxel-size 0.1 --color-by auto
+
+# Explicit .pcd path (same as Docker example above)
+python3 -m lanelet2_generator.las_mgrs_cli --input data/merged_clean.las --output data/pointcloud_map.pcd \
+  --utm-frame 32N --voxel-size 0.1 --color-by auto
 ```
 
 **Important notes:**
 
 - `.laz` requires a laspy backend (e.g. `lazrs`): `pip install lazrs`
 - Use `--utm-frame` (e.g. `32N`) or `--epsg` if LAS header CRS is missing/wrong
-- `output_dir` is a directory; set output filename with `--pcd-name`
+- Output is either a **directory** (use `--pcd-name` for the filename) or a **`.pcd` file path** (basename becomes the PCD name)
 - If the source cloud has RGB, use `--color-by rgb` (or `--color-by auto`)
 
 **Key options:**
@@ -355,7 +421,7 @@ python3 -m lanelet2_generator.las_mgrs_cli data/input_cloud.laz data \
 | `--voxel-size` | — | Voxel downsample size [m] |
 | `--stride` | — | Keep every k-th point |
 | `--max-points` | — | Random subsample limit |
-| `--pcd-name` | `pointcloud_map.pcd` | Output PCD filename |
+| `--pcd-name` | `pointcloud_map.pcd` | Output PCD filename when output is a directory (ignored if output path ends in `.pcd`) |
 | `--yaml-name` | `map_projector_info.yaml` | Output projector YAML filename |
 
 ### Python API
