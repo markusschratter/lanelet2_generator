@@ -11,15 +11,17 @@ Usage:
   docker/pointcloud_converter.sh [options] [-- converter flags...]
 
   Positional (legacy):
-    docker/pointcloud_converter.sh <input.las|input.laz> [output_dir|output.pcd] [-- ...]
+    docker/pointcloud_converter.sh <input.las|input.laz|input.pcd> [output_dir|output.pcd] [-- ...]
 
   Flags:
-    --input PATH    Input .las / .laz
+    --input PATH    Input .las / .laz / .pcd
     --output PATH   Output directory or full path to .pcd (e.g. data/pointcloud_map.pcd)
 
 Examples:
   docker/pointcloud_converter.sh --input data/merged_clean.las --output data/pointcloud_map.pcd \
     --utm-frame 33N --voxel-size 0.1 --color-by auto
+  docker/pointcloud_converter.sh --input data/cloud.pcd --output data/out.pcd \
+    --local-frame --voxel-size 0.1
   docker/pointcloud_converter.sh data/sampled.laz data -- --utm-frame 33N --voxel-size 0.1
   docker/pointcloud_converter.sh /abs/path/sampled.laz -- --epsg 32632 --pcd-name pointcloud_map.pcd
 

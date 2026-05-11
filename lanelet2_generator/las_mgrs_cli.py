@@ -1,5 +1,5 @@
 """
-CLI: UTM LAS/LAZ to local MGRS point cloud (PCD) + map_projector_info.yaml.
+CLI: UTM LAS/LAZ/PCD to local MGRS point cloud (PCD) + map_projector_info.yaml.
 
 Requires optional dependencies: pip install 'lanelet2_generator[las]'
 """
@@ -79,16 +79,18 @@ def _resolve_crs(las, epsg, utm_zone, south, utm_frame):
         z = int(utm_zone)
         code = (32700 if south else 32600) + z
         return CRS.from_epsg(code)
-    try:
-        crs = las.header.parse_crs()
-    except Exception:
-        crs = None
+    crs = None
+    if las is not None:
+        try:
+            crs = las.header.parse_crs()
+        except Exception:
+            crs = None
     if crs is not None:
         if isinstance(crs, str):
             return CRS.from_wkt(crs)
         return CRS.from_user_input(crs)
     raise ValueError(
-        "No CRS in LAS header. Set --epsg or --utm-zone (optionally --south)."
+        "No CRS available from input. Set --epsg or --utm-zone (optionally --south)."
     )
 
 
@@ -150,16 +152,35 @@ def _detect_mgrs_grid(easting, northing, crs, m_impl):
     return full[:5]
 
 
+def _choose_axis_subtract(values, origin):
+    """
+    Pick subtract value (0, +origin, or -origin) that best recenters values near zero.
+    """
+    med = float(np.median(values))
+    zero = 0.0
+    pos = float(origin)
+    neg = -float(origin)
+    # Smaller absolute median after subtraction indicates better local recentering.
+    score_zero = abs(med - zero)
+    score_pos = abs(med - pos)
+    score_neg = abs(med - neg)
+    best = min(
+        [(score_zero, zero, "none"), (score_pos, pos, "positive-origin"), (score_neg, neg, "negative-origin")],
+        key=lambda t: t[0],
+    )
+    return best[1], best[2]
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert UTM LAS/LAZ to local MGRS frame, optional downsample, write PCD + map_projector_info.yaml."
+        description="Convert UTM LAS/LAZ/PCD to local MGRS frame, optional downsample, write PCD + map_projector_info.yaml."
     )
     parser.add_argument(
         "input",
         nargs="?",
         type=Path,
         default=None,
-        help="Path to .las / .laz (or use --input)",
+        help="Path to .las / .laz / .pcd (or use --input)",
     )
     parser.add_argument(
         "output_dir",
@@ -174,7 +195,7 @@ def main():
         type=Path,
         default=None,
         metavar="PATH",
-        help="Input .las / .laz (alternative to positional)",
+        help="Input .las / .laz / .pcd (alternative to positional)",
     )
     parser.add_argument(
         "--output",
@@ -193,13 +214,35 @@ def main():
     parser.add_argument("--utm-zone", dest="utm_zone", type=int, default=None, metavar="Z", help="UTM zone 1..60")
     parser.add_argument("--south", action="store_true", help="Southern hemisphere (EPSG 327nn with --utm-zone)")
     parser.add_argument("--swap-xy", action="store_true", help="Swap X/Y before treating as easting/northing")
-    parser.add_argument("--mgrs-grid", default=None, help="Force 5-char MGRS grid instead of auto from centroid")
+    parser.add_argument(
+        "--local-frame",
+        action="store_true",
+        help="Non-georeferenced point cloud: skip UTM/MGRS; ignores --utm-frame/--epsg/--mgrs-grid/--subtract-xy-from-mgrs",
+    )
+    parser.add_argument(
+        "--subtract-xy",
+        type=float,
+        nargs=2,
+        default=[0.0, 0.0],
+        metavar=("X", "Y"),
+        help="Subtract (x-=A, y-=B) from source coordinates; optional fine-tune in --local-frame mode",
+    )
+    parser.add_argument(
+        "--subtract-xy-from-mgrs",
+        action="store_true",
+        help="Auto-set --subtract-xy from --mgrs-grid origin (ignored with --local-frame)",
+    )
+    parser.add_argument(
+        "--mgrs-grid",
+        default=None,
+        help="Force 5-char MGRS grid instead of auto from centroid (ignored with --local-frame)",
+    )
 
     parser.add_argument(
         "--color-by",
         choices=["auto", "none", "rgb", "intensity", "classification"],
         default="auto",
-        help="Color PCD from LAS data (default: auto pick rgb, then intensity, then classification)",
+        help="Color output PCD from source data (LAS dims or input PCD colors when available)",
     )
     parser.add_argument("--colormap", default="viridis", help="matplotlib colormap name")
     parser.add_argument(
@@ -227,6 +270,33 @@ def main():
 
     args = parser.parse_args()
 
+    if args.local_frame:
+        ignored = []
+        if args.epsg is not None:
+            ignored.append("--epsg")
+        if args.utm_frame is not None:
+            ignored.append("--utm-frame")
+        if args.utm_zone is not None:
+            ignored.append("--utm-zone")
+        if args.south:
+            ignored.append("--south")
+        if args.mgrs_grid:
+            ignored.append("--mgrs-grid")
+        if args.subtract_xy_from_mgrs:
+            ignored.append("--subtract-xy-from-mgrs")
+        if ignored:
+            print(
+                "--local-frame: ignoring georeferencing options (not used in local mode): "
+                + ", ".join(ignored),
+                file=sys.stderr,
+            )
+        args.epsg = None
+        args.utm_frame = None
+        args.utm_zone = None
+        args.south = False
+        args.mgrs_grid = None
+        args.subtract_xy_from_mgrs = False
+
     _try_import_las_stack()
 
     import laspy
@@ -253,55 +323,92 @@ def main():
 
     if not inp.exists():
         raise FileNotFoundError(f"Input not found: {inp}")
-    if inp.suffix.lower() not in (".las", ".laz"):
+    suffix = inp.suffix.lower()
+    if suffix not in (".las", ".laz", ".pcd"):
         raise ValueError(
-            f"Unsupported input format: {inp} (expected .las or .laz)"
+            f"Unsupported input format: {inp} (expected .las, .laz, or .pcd)"
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        las = laspy.read(str(inp))
-    except Exception as e:
-        msg = str(e)
-        if "No LazBackend selected" in msg and inp.suffix.lower() == ".laz":
-            raise RuntimeError(
-                "Reading .laz requires a laspy backend. Install one with:\n"
-                "  pip install lazrs\n"
-                "or install tool extras:\n"
-                "  pip install 'lanelet2_generator[las]'"
-            ) from e
-        raise
-    crs = _resolve_crs(las, args.epsg, args.utm_zone, args.south, args.utm_frame)
-
-    x = np.asarray(las.x, dtype=np.float64)
-    y = np.asarray(las.y, dtype=np.float64)
-    z = np.asarray(las.z, dtype=np.float64)
+    if suffix in (".las", ".laz"):
+        try:
+            las = laspy.read(str(inp))
+        except Exception as e:
+            msg = str(e)
+            if "No LazBackend selected" in msg and suffix == ".laz":
+                raise RuntimeError(
+                    "Reading .laz requires a laspy backend. Install one with:\n"
+                    "  pip install lazrs\n"
+                    "or install tool extras:\n"
+                    "  pip install 'lanelet2_generator[las]'"
+                ) from e
+            raise
+        crs = None if args.local_frame else _resolve_crs(las, args.epsg, args.utm_zone, args.south, args.utm_frame)
+        x = np.asarray(las.x, dtype=np.float64)
+        y = np.asarray(las.y, dtype=np.float64)
+        z = np.asarray(las.z, dtype=np.float64)
+        color_by = _auto_color_mode(las, args.color_by)
+        p_lo, p_hi = args.color_percentiles
+        colors = _color_values(las, color_by, p_lo, p_hi, args.colormap)
+    else:
+        pcd_in = o3d.io.read_point_cloud(str(inp))
+        pts_in = np.asarray(pcd_in.points, dtype=np.float64)
+        if pts_in.size == 0:
+            raise ValueError(f"PCD has no points: {inp}")
+        if pts_in.ndim != 2 or pts_in.shape[1] != 3:
+            raise ValueError(f"PCD points must be Nx3, got shape {pts_in.shape} from {inp}")
+        crs = None if args.local_frame else _resolve_crs(None, args.epsg, args.utm_zone, args.south, args.utm_frame)
+        x = pts_in[:, 0]
+        y = pts_in[:, 1]
+        z = pts_in[:, 2]
+        colors = np.asarray(pcd_in.colors, dtype=np.float64) if pcd_in.has_colors() else None
 
     if args.swap_xy:
         x, y = y, x
 
+    sub_x, sub_y = args.subtract_xy
+    if args.subtract_xy_from_mgrs:
+        if not args.mgrs_grid:
+            parser.error("--subtract-xy-from-mgrs requires --mgrs-grid (e.g. 33TWN)")
+        shift_grid = str(args.mgrs_grid).strip()[:5]
+        shift_e, shift_n = mgrs_grid_origin_utm(shift_grid)
+        sub_x, mode_x = _choose_axis_subtract(x, shift_e)
+        sub_y, mode_y = _choose_axis_subtract(y, shift_n)
+        print(
+            f"Using auto subtract from MGRS grid {shift_grid}: "
+            f"X={sub_x:.3f} ({mode_x}) Y={sub_y:.3f} ({mode_y})"
+        )
+    if sub_x != 0.0 or sub_y != 0.0:
+        x = x - float(sub_x)
+        y = y - float(sub_y)
+
     easting, northing = x, y
 
-    m_impl = mgrs.MGRS()
-    if args.mgrs_grid:
-        grid5 = str(args.mgrs_grid).strip()[:5]
+    if args.local_frame:
+        grid5 = None
+        lat0 = 0.0
+        lon0 = 0.0
+        ele0 = 0.0
+        x_loc = easting
+        y_loc = northing
+        z_loc = z
     else:
-        grid5 = _detect_mgrs_grid(easting, northing, crs, m_impl)
-    # map_origin should anchor the local frame (x=0,y=0), i.e. the MGRS grid origin.
-    lat0, lon0 = mgrs_to_wgs(grid5)
-    ele0 = 0.0
+        m_impl = mgrs.MGRS()
+        if args.mgrs_grid:
+            grid5 = str(args.mgrs_grid).strip()[:5]
+        else:
+            grid5 = _detect_mgrs_grid(easting, northing, crs, m_impl)
+        # map_origin should anchor the local frame (x=0,y=0), i.e. the MGRS grid origin.
+        lat0, lon0 = mgrs_to_wgs(grid5)
+        ele0 = 0.0
 
-    base_e, base_n = mgrs_grid_origin_utm(grid5)
-    x_loc = easting - base_e
-    y_loc = northing - base_n
-    z_loc = z
+        base_e, base_n = mgrs_grid_origin_utm(grid5)
+        x_loc = easting - base_e
+        y_loc = northing - base_n
+        z_loc = z
 
     pts = np.column_stack([x_loc, y_loc, z_loc])
-
-    color_by = _auto_color_mode(las, args.color_by)
-    p_lo, p_hi = args.color_percentiles
-    colors = _color_values(las, color_by, p_lo, p_hi, args.colormap)
 
     n = len(pts)
     if args.stride is not None and args.stride > 1:
@@ -328,11 +435,18 @@ def main():
     pcd_path = output_dir / pcd_name
     o3d.io.write_point_cloud(str(pcd_path), pcd, write_ascii=bool(args.ascii_pcd))
 
-    doc = {
-        "projector_type": "MGRS",
-        "vertical_datum": "WGS84",
-        "mgrs_grid": grid5,
-    }
+    if args.local_frame:
+        # Must match tier4_map_msgs/MapProjectorInfo.msg: LOCAL = "local" (not "LOCAL").
+        doc = {
+            "projector_type": "local",
+            "vertical_datum": "WGS84",
+        }
+    else:
+        doc = {
+            "projector_type": "MGRS",
+            "vertical_datum": "WGS84",
+            "mgrs_grid": grid5,
+        }
     yaml_path = output_dir / args.yaml_name
     with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
@@ -361,7 +475,10 @@ def main():
     print(f"Wrote {pcd_path}")
     print(f"Wrote {yaml_path}")
     print(f"Wrote {map_cfg_path}")
-    print(f"mgrs_grid={grid5}  (reference MGRS from centroid: auto)" if not args.mgrs_grid else f"mgrs_grid={grid5}  (forced)")
+    if args.local_frame:
+        print("local_frame=true (UTM/MGRS conversion skipped)")
+    else:
+        print(f"mgrs_grid={grid5}  (reference MGRS from centroid: auto)" if not args.mgrs_grid else f"mgrs_grid={grid5}  (forced)")
 
 
 if __name__ == "__main__":
