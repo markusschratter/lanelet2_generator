@@ -411,7 +411,7 @@ The node advertises `/api/routing/set_route_points` (`autoware_adapi_v1_msgs/srv
 Supports three practical modes:
 
 - **LAS/LAZ mode**: interpret source with `--utm-frame` / `--epsg`, then convert to local frame (fixed with `--mgrs-grid` or auto by centroid)
-- **PCD not georeferenced**: `--local-frame` only; `--utm-frame`, `--epsg`, `--mgrs-grid`, `--subtract-xy-from-mgrs`, etc. are ignored (stderr note if passed); optional `--subtract-xy` for manual tweak
+- **PCD not georeferenced**: `--local-frame` only; `--utm-frame`, `--epsg`, `--mgrs-grid`, `--subtract-xy-from-mgrs`, etc. are ignored (stderr note if passed); optional `--subtract-xy` for manual tweak. Writes `map_projector_info.yaml` with a single line: `projector_type: Local`
 - **PCD UTM on disk**: omit `--local-frame`; pass `--utm-frame` / `--epsg` and optionally `--mgrs-grid` + `--subtract-xy-from-mgrs`
 - Optional downsampling (`--stride`, `--max-points`, `--voxel-size`)
 - Writes PCD and YAML sidecars

@@ -435,21 +435,18 @@ def main():
     pcd_path = output_dir / pcd_name
     o3d.io.write_point_cloud(str(pcd_path), pcd, write_ascii=bool(args.ascii_pcd))
 
+    yaml_path = output_dir / args.yaml_name
     if args.local_frame:
-        # Must match tier4_map_msgs/MapProjectorInfo.msg: LOCAL = "local" (not "LOCAL").
-        doc = {
-            "projector_type": "local",
-            "vertical_datum": "WGS84",
-        }
+        # Local point cloud: single-line map_projector_info (no vertical_datum / mgrs_grid).
+        yaml_path.write_text("projector_type: Local\n", encoding="utf-8")
     else:
         doc = {
             "projector_type": "MGRS",
             "vertical_datum": "WGS84",
             "mgrs_grid": grid5,
         }
-    yaml_path = output_dir / args.yaml_name
-    with open(yaml_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(doc, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
     # Keep map origin stable/readable in YAML (avoid tiny floating-point tails).
     lat0 = round(float(lat0), 10)
