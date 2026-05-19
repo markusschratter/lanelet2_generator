@@ -9,7 +9,12 @@ import yaml
 
 from lanelet2_generator.readers import load_path, read_csv, read_pcd, read_ply, read_offset, read_yaml
 from lanelet2_generator.filtering import filter_path, filter_by_min_distance, filter_downsample
-from lanelet2_generator.geometry import pose2line, smooth_path, split_segments
+from lanelet2_generator.geometry import (
+    apply_trajectory_z_offset,
+    pose2line,
+    smooth_path,
+    split_segments,
+)
 from lanelet2_generator.lanelet import to_lanelet, LaneletMap
 from lanelet2_generator.osm_merge import (
     apply_id_offset,
@@ -29,6 +34,7 @@ __all__ = [
     "filter_path",
     "filter_by_min_distance",
     "filter_downsample",
+    "apply_trajectory_z_offset",
     "pose2line",
     "smooth_path",
     "split_segments",
@@ -105,6 +111,7 @@ def generate(
     mgrs="33TWN",
     map_projector_info=None,
     offset=(0.0, 0.0, 0.0),
+    trajectory_offset_z=-1.5,
     geo_origin=None,
     use_centerline=False,
     min_distance=1.0,
@@ -132,7 +139,9 @@ def generate(
             ``mgrs_grid``; ``local`` exports nodes with empty ``lat``/``lon`` and
             only ``local_x`` / ``local_y`` / ``ele`` tags (optional ``map_origin``
             in YAML is kept for metadata / future use).
-        offset: Offset from centerline (x,y,z)
+        offset: Offset from centerline (x,y,z) in each pose body frame
+        trajectory_offset_z: Add to all path z values [m] before lane building
+            (default -1.5: LiDAR height to ground).
         geo_origin: UTM origin (easting, northing, elevation) of the input local
             frame.  Auto-detected from a companion .offset file for PLY inputs
             when not provided.
@@ -223,6 +232,11 @@ def generate(
         if p.suffix.lower() == ".ply" and offset_path.exists():
             geo_origin = read_offset(offset_path)
             print(f"Using geo origin from {offset_path}: E={geo_origin[0]:.1f} N={geo_origin[1]:.1f} Z={geo_origin[2]:.1f}")
+
+    tz = float(trajectory_offset_z)
+    if tz != 0.0:
+        poses = apply_trajectory_z_offset(poses, tz)
+        print(f"Applied trajectory z offset [m]: {tz}")
 
     poses = filter_path(poses, min_distance=min_distance, step=step)
     poses = smooth_path(poses, window=smooth_window)

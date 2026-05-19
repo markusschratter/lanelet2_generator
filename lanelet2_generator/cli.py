@@ -47,7 +47,14 @@ def main():
         default=None,
         help="optional map_projector_info.yaml (MGRS: mgrs_grid; local: projector_type local + optional map_origin)",
     )
-    parser.add_argument("--offset", type=float, nargs=3, default=[0.0, 0.0, 0.0], help="offset [m] from centerline")
+    parser.add_argument("--offset", type=float, nargs=3, default=[0.0, 0.0, 0.0], help="offset [m] from centerline (body frame)")
+    parser.add_argument(
+        "--trajectory-offset-z",
+        type=float,
+        default=-1.5,
+        metavar="M",
+        help="add to path z before lane building [m] (default -1.5, LiDAR to ground; use 0 to disable)",
+    )
     parser.add_argument("--center", action="store_true", help="add centerline to lanelet")
     parser.add_argument("--min-distance", type=float, default=1.0, metavar="M", help="minimum distance [m] between points (default: 1.0)")
     parser.add_argument("--interval", type=float, nargs=2, default=[0.1, 2.0], metavar=("MIN", "MAX"),
@@ -115,6 +122,7 @@ def main():
         mgrs=args.mgrs,
         map_projector_info=args.map_projector_info,
         offset=tuple(args.offset),
+        trajectory_offset_z=args.trajectory_offset_z,
         use_centerline=args.center,
         min_distance=args.min_distance,
         step=args.step,

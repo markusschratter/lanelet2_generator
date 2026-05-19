@@ -361,7 +361,8 @@ python3 -m lanelet2_generator.cli /path/to/bag data --width 3.0 --mgrs 33TWN
 | `--mgrs`               | string            | 33TWN   | MGRS code                                                                                    |
 | `--map-projector-info` | path              | —       | Optional `map_projector_info.yaml`; uses `mgrs_grid` from file (overrides `--mgrs`)          |
 | `--speed-limit`        | float             | 30      | Speed limit [km/h]                                                                           |
-| `--offset`             | float float float | 0 0 0   | Offset [m] from centerline (x y z)                                                           |
+| `--offset`             | float float float | 0 0 0   | Offset [m] from centerline in body frame (x y z)                                             |
+| `--trajectory-offset-z` | float            | -1.5    | Add to path z [m] before lane building (LiDAR to ground; use `0` to disable)                  |
 | `--center`             | flag              | false   | Add centerline to lanelet                                                                    |
 | `--min-distance`       | float             | 1.0     | Min distance [m] between consecutive points                                                  |
 | `--step`               | int               | 1       | Downsample: keep every Nth point (CSV/PLY only)                                              |

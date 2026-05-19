@@ -11,6 +11,7 @@
   <arg name="split_direction_window_m" default="" description="Direction change window [m]" />
   <arg name="smooth_window" default="0" description="Interpolating smoothing subdivisions per segment; 0 disables" />
   <arg name="bidirectional" default="true" description="Generate opposite-direction lanelets" />
+  <arg name="trajectory_offset_z" default="-1.5" description="Add to path z [m] before lane building (LiDAR to ground)" />
 
   <node pkg="lanelet2_generator" exec="route_to_lanelet_node" name="route_to_lanelet_node" output="screen">
     <param name="output_path" value="$(var output_path)" />
@@ -24,5 +25,6 @@
     <param name="split_direction_window_m" value="$(var split_direction_window_m)" />
     <param name="smooth_window" value="$(var smooth_window)" />
     <param name="bidirectional" value="$(var bidirectional)" />
+    <param name="trajectory_offset_z" value="$(var trajectory_offset_z)" />
   </node>
 </launch>
