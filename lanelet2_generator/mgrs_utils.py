@@ -90,3 +90,14 @@ def mgrs_to_wgs(mgrs_string):
     transformer = Transformer.from_crs(utm_crs, wgs84_crs, always_xy=True)
     lon, lat = transformer.transform(easting, northing)
     return (lat, lon)
+
+
+def utm_frame_from_mgrs_grid(mgrs_grid):
+    """
+    Derive UTM frame notation (e.g. ``33N``) from a 5-char MGRS grid designator.
+
+    Example: ``33TWN`` -> zone 33, latitude band T (northern) -> ``33N``.
+    """
+    zone, hemisphere, _, _, _ = parse_mgrs(str(mgrs_grid).strip()[:5])
+    hemi = "S" if hemisphere == "south" else "N"
+    return f"{zone}{hemi}"

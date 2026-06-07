@@ -8,30 +8,51 @@ This package is based on [bag2lanelet](https://github.com/autowarefoundation/aut
 
 ### Docker
 
+**Map frame (step 0 — optional but recommended)** — generate `map_projector_info.yaml` and `map_config.yaml` before pointcloud / lanelet steps.
+
+
+|            |                                                                                                      |
+| ---------- | ---------------------------------------------------------------------------------------------------- |
+| **output** | Directory for the two YAML files (positional or `--output`)                                          |
+| **--gnss** | GNSS trajectory PLY (`nav_sat_fix.ply` with `x`, `y`, `z`). Omit → local map YAML (`projector_type: Local`) |
+
+
+```bash
+# Georef map from GNSS (auto-finds 2_georef/traj_fusion_gps.offset in parent folders)
+docker/map_projector.sh --output data/map \
+  --gnss /path/to/sensing/gnss/nav_sat_fix.ply
+
+# Local map (no GNSS)
+docker/map_projector.sh --output data/map
+```
+
+Use the generated YAML in the lanelet step (`--map-projector-info data/map/map_projector_info.yaml`). For georef LAS conversion, pass the same `--mgrs-grid` from the generated `map_projector_info.yaml`.
+
+GNSS PLY coordinates are UTM meters. The tool auto-discovers a companion ``*.offset`` file (e.g. ``2_georef/traj_fusion_gps.offset``) whose easting/northing is the MGRS tile origin; from that it derives ``mgrs_grid`` and UTM zone unambiguously.
+
 **Point cloud (LAS/LAZ/PCD -> PCD + YAML)** — choose one of three modes below.
 
 
 |            |                                                                                                                                                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **input**  | Positional path, or `--input`: `input.las` / `input.laz` / `input.pcd`                                                                                                                                             |
+| **input**  | Positional path, or `--input`: `input.las` / `input.laz` / `input.pcd`, or a directory of `.las`/`.laz` files                                                                                                                                             |
 | **output** | Positional path, or `--output`: output **directory**, or a full path ending in `**.pcd`**. If omitted, the input file’s directory is used. Writes `map_projector_info.yaml` and `map_config.yaml` next to the PCD. |
 
 
 ```bash
-# Mode 1 (LAS/LAZ): source CRS from --utm-frame/--epsg, target local frame from --mgrs-grid
-docker/pointcloud_converter.sh data/merged_clean.las --utm-frame 32N --voxel-size 0.1 --color-by auto
-
-# Mode 2 (PCD): not georeferenced — keep XYZ; ignores --utm-frame/--mgrs-grid/etc., optional `--subtract-xy` only
+# Default (local): keep XYZ — writes map_projector_info.yaml with projector_type: Local
 docker/pointcloud_converter.sh --input data/input_cloud.pcd --output data/pointcloud_map.pcd \
-  --local-frame --voxel-size 0.1
+  --voxel-size 0.1
 
-# Mode 3 (PCD): coordinates on disk are UTM meters — omit --local-frame; CRS + optional tile XY snap
+# Georef LAS/LAZ: --mgrs-grid alone derives source UTM (33TWN -> 33N); writes MGRS yaml
+docker/pointcloud_converter.sh data/merged_clean.las --output data/out \
+  --mgrs-grid 33TWN --voxel-size 0.1 --color-by auto
+# or explicit source UTM:
+# docker/pointcloud_converter.sh data/merged_clean.las --utm-frame 32N --mgrs-grid 32UQU --voxel-size 0.1
+
+# PCD already in UTM meters on disk
 docker/pointcloud_converter.sh --input data/input_cloud.pcd --output data/pointcloud_map.pcd \
   --utm-frame 33N --mgrs-grid 33TWN --subtract-xy-from-mgrs --voxel-size 0.1
-
-# Explicit input/output flags and exact PCD path (LAS/LAZ):
-docker/pointcloud_converter.sh --input data/merged_clean.las --output data/pointcloud_map.pcd \
-  --utm-frame 32N --voxel-size 0.1 --color-by auto
 ```
 
 **Lanelet (trajectory → `.osm`)** — map frame uses `--mgrs` or `--map-projector-info` (`mgrs_grid`); not `--utm-frame`.
@@ -63,7 +84,7 @@ docker/merge_lanelets.sh data/map_a.osm data/map_b.osm data/map_c.osm -o data/me
 
 |            |                                                                                                                                                                                                 |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **input**  | Positional path or `--input`: `input.las` / `input.laz` / `input.pcd`                                                                                                                           |
+| **input**  | Positional path or `--input`: `input.las` / `input.laz` / `input.pcd`, or a directory of `.las`/`.laz` files                                                                                                                           |
 | **output** | Positional path or `--output`: output **directory**, or a path ending in `**.pcd`**. If omitted, the input file’s directory is used (PCD name from `--pcd-name`, default `pointcloud_map.pcd`). |
 
 
@@ -420,21 +441,29 @@ Supports three practical modes:
 **Syntax:**
 
 ```bash
-python3 -m lanelet2_generator.las_mgrs_cli <input.las|input.laz|input.pcd> [output_dir|output.pcd] [options]
+python3 -m lanelet2_generator.las_mgrs_cli <input.las|input.laz|input.pcd|tiles_dir/> [output_dir|output.pcd] [options]
 # or
 python3 -m lanelet2_generator.las_mgrs_cli --input <path> [--output <dir_or.pcd>] [options]
 ```
 
-If `output` is omitted, files are written to the input file’s directory. If `output` is a path ending in `.pcd`, that path sets both the directory and the PCD filename (`--pcd-name` is ignored in that case).
+If `output` is omitted, files are written to the input directory (folder input) or the input file’s parent directory. A folder input processes each `.las`/`.laz` tile separately (voxel filter per file, then merge into one PCD) to keep memory use low. Per-tile shifted/downsampled PCDs are saved under `tiles/` in the output directory (disable with `--tile-pcd-dir ''`). If `output` is a path ending in `.pcd`, that path sets both the directory and the PCD filename (`--pcd-name` is ignored in that case).
 
 **Examples:**
 
 ```bash
+# LAS/LAZ folder: merge all tiles in a directory
+python3 -m lanelet2_generator.las_mgrs_cli data/tiles/ data/out \
+  --utm-frame 32N --mgrs-grid 32UQU --voxel-size 0.1 --color-by auto
+
 # LAS/LAZ mode: explicit EPSG
 python3 -m lanelet2_generator.las_mgrs_cli data/input_cloud.laz data \
   --pcd-name pointcloud_map.pcd --epsg 32632 --mgrs-grid 32UQU --voxel-size 0.1 --color-by rgb
 
-# LAS/LAZ mode: UTM frame notation (instead of EPSG)
+# LAS/LAZ georef: --mgrs-grid derives source UTM (33TWN -> 33N); writes map_projector_info.yaml
+python3 -m lanelet2_generator.las_mgrs_cli data/input_cloud.laz data/out \
+  --mgrs-grid 33TWN --voxel-size 0.1 --color-by auto
+
+# LAS/LAZ georef: explicit UTM frame
 python3 -m lanelet2_generator.las_mgrs_cli data/input_cloud.laz data \
   --utm-frame 32N --mgrs-grid 32UQU --voxel-size 0.1 --color-by auto
 
@@ -454,9 +483,10 @@ python3 -m lanelet2_generator.las_mgrs_cli --input data/merged_clean.las --outpu
 **Important notes:**
 
 - `.laz` requires a laspy backend (e.g. `lazrs`): `pip install lazrs`
-- `--utm-frame` / `--epsg` describes the **source CRS** (mainly LAS/LAZ)
-- `--mgrs-grid` fixes the **target local tile origin** (recommended for deterministic output)
-- `--local-frame`: non-georeferenced clouds only; all CRS/MGRS/tile-auto flags are ignored (see stderr if you passed any). Optional `--subtract-xy` still applies.
+- **Default mode is local** (keep source XYZ). Writes `map_projector_info.yaml` with `projector_type: Local`.
+- **Georef mode** when you pass `--utm-frame`, `--epsg`, or `--mgrs-grid` (UTM source derived from grid, e.g. `33TWN` → `33N`). Writes `map_projector_info.yaml` with `projector_type: MGRS` and `mgrs_grid`.
+- `--mgrs-grid` sets the target local tile; `--utm-frame` can be omitted if `--mgrs-grid` is set.
+- `--local-frame`: optional explicit flag (local is already the default).
 - Output is either a **directory** (use `--pcd-name` for the filename) or a `**.pcd` file path** (basename becomes the PCD name)
 - If the source cloud has RGB, use `--color-by rgb` (or `--color-by auto`)
 
@@ -466,10 +496,10 @@ python3 -m lanelet2_generator.las_mgrs_cli --input data/merged_clean.las --outpu
 | Option                   | Default                   | Description                                                                            |
 | ------------------------ | ------------------------- | -------------------------------------------------------------------------------------- |
 | `--epsg`                 | —                         | CRS override by EPSG                                                                   |
-| `--utm-frame`            | —                         | CRS override in UTM format, e.g. `32N`, `32S`                                          |
+| `--utm-frame`            | —                         | Source CRS in UTM format, e.g. `32N` (optional if `--mgrs-grid` set)                 |
 | `--utm-zone` + `--south` | —                         | Alternative CRS override                                                               |
 | `--mgrs-grid`            | auto                      | Force 5-char MGRS grid (e.g. `32UQU`)                                                  |
-| `--local-frame`          | false                     | Non-georeferenced: skip UTM/MGRS; ignores CRS/MGRS/`--subtract-xy-from-mgrs`          |
+| `--local-frame`          | true (default)            | Keep source XYZ; georef only when CRS/MGRS options or MGRS map_projector_info is set |
 | `--subtract-xy`          | `0 0`                     | Manual constant subtraction from source X/Y                                             |
 | `--subtract-xy-from-mgrs`| false                     | Auto-select subtraction from `--mgrs-grid` origin                                      |
 | `--color-by`             | `auto`                    | `auto`, `rgb`, `intensity`, `classification`, `none`                                   |
@@ -479,6 +509,7 @@ python3 -m lanelet2_generator.las_mgrs_cli --input data/merged_clean.las --outpu
 | `--stride`               | —                         | Keep every k-th point                                                                  |
 | `--max-points`           | —                         | Random subsample limit                                                                 |
 | `--pcd-name`             | `pointcloud_map.pcd`      | Output PCD filename when output is a directory (ignored if output path ends in `.pcd`) |
+| `--tile-pcd-dir`         | `tiles`                   | Per-tile shifted/downsampled PCDs on folder input (`''` to disable)                    |
 | `--yaml-name`            | `map_projector_info.yaml` | Output projector YAML filename                                                         |
 
 
