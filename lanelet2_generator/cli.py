@@ -9,13 +9,13 @@ from lanelet2_generator import generate
 def main():
     parser = argparse.ArgumentParser(
         description="Create lanelet2 map from path data. "
-        "Input: CSV (.csv), PLY (.ply), YAML (.yaml/.yml), MCAP bag (.mcap), or rosbag2 directory (sqlite3)",
+        "Input: CSV (.csv), PCD (.pcd), PLY (.ply), YAML (.yaml/.yml), MCAP bag (.mcap), or rosbag2 directory (sqlite3)",
     )
     parser.add_argument(
         "input",
         nargs="?",
         default=None,
-        help="input path: CSV, PLY, YAML, MCAP, or rosbag2 directory (or use --input)",
+        help="input path: CSV, PCD, PLY, YAML, MCAP, or rosbag2 directory (or use --input)",
     )
     parser.add_argument(
         "--input",
@@ -45,14 +45,21 @@ def main():
         "--map-projector-info",
         type=Path,
         default=None,
-        help="optional map_projector_info.yaml; uses mgrs_grid from file",
+        help="optional map_projector_info.yaml (MGRS: mgrs_grid; local: projector_type local + optional map_origin)",
     )
-    parser.add_argument("--offset", type=float, nargs=3, default=[0.0, 0.0, 0.0], help="offset [m] from centerline")
+    parser.add_argument("--offset", type=float, nargs=3, default=[0.0, 0.0, 0.0], help="offset [m] from centerline (body frame)")
+    parser.add_argument(
+        "--trajectory-offset-z",
+        type=float,
+        default=-1.5,
+        metavar="M",
+        help="add to path z before lane building [m] (default -1.5, LiDAR to ground; use 0 to disable)",
+    )
     parser.add_argument("--center", action="store_true", help="add centerline to lanelet")
     parser.add_argument("--min-distance", type=float, default=1.0, metavar="M", help="minimum distance [m] between points (default: 1.0)")
     parser.add_argument("--interval", type=float, nargs=2, default=[0.1, 2.0], metavar=("MIN", "MAX"),
         help="[bag/mcap only] min and max interval between tf poses [m]")
-    parser.add_argument("--step", type=int, default=1, help="[CSV/PLY only] downsample step (default: 1)")
+    parser.add_argument("--step", type=int, default=1, help="[CSV/PCD/PLY only] downsample step (default: 1)")
     parser.add_argument("--split-distance", type=float, default=500, metavar="M", help="split lanelet every M meters (default: 500)")
     parser.add_argument("--split-direction", type=float, nargs=2, default=None, metavar=("DEG", "M"),
         help="split when direction changes more than DEG deg within M m (e.g. 80 30)")
@@ -115,6 +122,7 @@ def main():
         mgrs=args.mgrs,
         map_projector_info=args.map_projector_info,
         offset=tuple(args.offset),
+        trajectory_offset_z=args.trajectory_offset_z,
         use_centerline=args.center,
         min_distance=args.min_distance,
         step=args.step,

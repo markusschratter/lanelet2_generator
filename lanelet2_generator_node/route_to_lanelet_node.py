@@ -37,6 +37,7 @@ class RouteToLaneletNode(Node):
         self.declare_parameter("split_direction_window_m", "")
         self.declare_parameter("smooth_window", 0)
         self.declare_parameter("bidirectional", True)
+        self.declare_parameter("trajectory_offset_z", -1.5)
 
         self.srv = self.create_service(
             SetRoutePoints,
@@ -81,6 +82,7 @@ class RouteToLaneletNode(Node):
         window_m = _opt_float(self.get_parameter("split_direction_window_m").value)
         smooth_window = int(self.get_parameter("smooth_window").value)
         bidirectional = bool(self.get_parameter("bidirectional").value)
+        trajectory_offset_z = float(self.get_parameter("trajectory_offset_z").value)
 
         try:
             result = generate(
@@ -88,6 +90,7 @@ class RouteToLaneletNode(Node):
                 poses=poses,
                 width=width,
                 mgrs=mgrs,
+                trajectory_offset_z=trajectory_offset_z,
                 min_distance=min_distance,
                 step=step,
                 split_distance=split_distance,

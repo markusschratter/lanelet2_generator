@@ -9,27 +9,39 @@ import numpy as np
 from pyproj import CRS, Transformer
 
 from lanelet2_generator.geometry import pose2line, split_segments
-from lanelet2_generator.mgrs_utils import mgrs_to_wgs, parse_mgrs
+from lanelet2_generator.mgrs_utils import parse_mgrs
 
 
 class LaneletMap:
-    def __init__(self, mgrs="33TWN"):
+    def __init__(
+        self,
+        mgrs="33TWN",
+        *,
+        projector_type="mgrs",
+        map_origin_latlon_alt=(0.0, 0.0, 0.0),
+    ):
         self.mgrs = mgrs
+        self._projector = str(projector_type).strip().lower()
         self.element_num = 0
         self.root = ET.Element("osm", {"generator": "lanelet2_generator"})
         ET.SubElement(self.root, "MetaInfo", {"format_version": "1", "map_version": "2"})
 
-        # Parse the base MGRS grid zone once, create a single Transformer
-        zone, hemisphere, base_e, base_n, _ = parse_mgrs(mgrs)
-        self._base_easting = base_e
-        self._base_northing = base_n
-        is_south = hemisphere == "south"
-        utm_crs = CRS.from_dict({"proj": "utm", "zone": zone, "south": is_south, "datum": "WGS84"})
-        wgs84_crs = CRS.from_epsg(4326)
-        self._transformer = Transformer.from_crs(utm_crs, wgs84_crs, always_xy=True)
+        if self._projector == "local":
+            # Nodes store only local_x / local_y / ele; lat/lon attributes stay empty.
+            self._transformer = None
+            self._base_easting = None
+            self._base_northing = None
+        else:
+            zone, hemisphere, base_e, base_n, _ = parse_mgrs(mgrs)
+            self._base_easting = base_e
+            self._base_northing = base_n
+            is_south = hemisphere == "south"
+            utm_crs = CRS.from_dict({"proj": "utm", "zone": zone, "south": is_south, "datum": "WGS84"})
+            wgs84_crs = CRS.from_epsg(4326)
+            self._transformer = Transformer.from_crs(utm_crs, wgs84_crs, always_xy=True)
 
     def _local_to_wgs84(self, x, y):
-        """Convert local MGRS coordinates to (lat, lon) with sub-meter precision."""
+        """Convert map-frame coordinates to (lat, lon). Not used for projector_type local."""
         easting = self._base_easting + float(x)
         northing = self._base_northing + float(y)
         lon, lat = self._transformer.transform(easting, northing)
@@ -37,15 +49,30 @@ class LaneletMap:
 
     def add_node(self, x, y, z):
         self.element_num += 1
-        lat, lon = self._local_to_wgs84(x, y)
-        mgrs_code_short = self.mgrs + ("%05d" % int(round(x)))[:3] + ("%05d" % int(round(y)))[:3]
+        fx, fy, fz = float(x), float(y), float(z)
+        if self._projector == "local":
+            node = ET.SubElement(
+                self.root,
+                "node",
+                {"id": str(self.element_num), "lat": "", "lon": ""},
+            )
+            for k, v in [
+                ("local_x", str(fx)),
+                ("local_y", str(fy)),
+                ("ele", str(fz)),
+            ]:
+                ET.SubElement(node, "tag", {"k": k, "v": v})
+            return self.element_num
+
+        lat, lon = self._local_to_wgs84(fx, fy)
+        mgrs_code_short = self.mgrs + ("%05d" % int(round(fx)))[:3] + ("%05d" % int(round(fy)))[:3]
         node = ET.SubElement(
             self.root, "node",
             {"id": str(self.element_num), "lat": str(lat), "lon": str(lon)},
         )
         for k, v in [
             ("type", ""), ("subtype", ""), ("mgrs_code", mgrs_code_short),
-            ("local_x", str(x)), ("local_y", str(y)), ("ele", str(z)),
+            ("local_x", str(fx)), ("local_y", str(fy)), ("ele", str(fz)),
         ]:
             ET.SubElement(node, "tag", {"k": k, "v": v})
         return self.element_num
@@ -85,6 +112,8 @@ def to_lanelet(
     *,
     width=2.0,
     mgrs="33TWN",
+    projector_type="mgrs",
+    map_origin_latlon_alt=(0.0, 0.0, 0.0),
     offset=(0.0, 0.0, 0.0),
     geo_origin=None,
     use_centerline=False,
@@ -102,6 +131,9 @@ def to_lanelet(
         geo_origin: Optional UTM origin (easting, northing, elevation) of the
             input local frame, e.g. from a .offset companion file.  When set,
             poses are shifted from local-frame to MGRS-local before processing.
+            Ignored when projector_type is ``local``.
+        projector_type: ``mgrs`` (default) or ``local`` (see map_projector_info.yaml).
+        map_origin_latlon_alt: Reserved for ``local`` (nodes use only ``local_x`` / ``local_y`` / ``ele`` tags).
 
     Returns:
         Path to saved .osm file
@@ -110,7 +142,8 @@ def to_lanelet(
     if len(poses) == 0:
         raise ValueError("No poses to convert")
 
-    if geo_origin is not None:
+    _proj = str(projector_type).strip().lower()
+    if geo_origin is not None and _proj != "local":
         _, _, base_e, base_n, _ = parse_mgrs(mgrs)
         poses = poses.copy()
         poses[:, 0] += geo_origin[0] - base_e
@@ -118,7 +151,11 @@ def to_lanelet(
         poses[:, 2] += geo_origin[2]
 
     left, right, center = pose2line(poses, width=width, offset=offset)
-    m = LaneletMap(mgrs=mgrs)
+    m = LaneletMap(
+        mgrs=mgrs,
+        projector_type=projector_type,
+        map_origin_latlon_alt=map_origin_latlon_alt,
+    )
     segments = split_segments(
         center, poses,
         split_distance=split_distance,

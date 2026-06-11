@@ -3,6 +3,25 @@
 import numpy as np
 
 
+def _rotate_vectors_by_quat(qx, qy, qz, qw, vx, vy, vz):
+    """Rotate constant body-frame vector (vx, vy, vz) by each quaternion. Returns (N, 3)."""
+    return np.column_stack([
+        vx * (1 - 2 * (qy ** 2 + qz ** 2)) + vy * 2 * (qx * qy - qw * qz) + vz * 2 * (qx * qz + qw * qy),
+        vx * 2 * (qx * qy + qw * qz) + vy * (1 - 2 * (qx ** 2 + qz ** 2)) + vz * 2 * (qy * qz - qw * qx),
+        vx * 2 * (qx * qz - qw * qy) + vy * 2 * (qy * qz + qw * qx) + vz * (1 - 2 * (qx ** 2 + qy ** 2)),
+    ])
+
+
+def apply_trajectory_z_offset(pose_array, z_offset=0.0):
+    """Shift all trajectory z coordinates by z_offset [m] (e.g. -1.5 for LiDAR height)."""
+    z_offset = float(z_offset)
+    if z_offset == 0.0:
+        return np.asarray(pose_array, dtype=np.float64).copy()
+    out = np.asarray(pose_array, dtype=np.float64).copy()
+    out[:, 2] += z_offset
+    return out
+
+
 def pose2line(pose_array, width=3.0, offset=(0, 0, 0)):
     """
     Compute left, right, center boundary lines from poses.
@@ -28,24 +47,13 @@ def pose2line(pose_array, width=3.0, offset=(0, 0, 0)):
     qx, qy, qz, qw = pose_array[:, 3], pose_array[:, 4], pose_array[:, 5], pose_array[:, 6]
 
     hw = width / 2.0
-    # Rotate [0, hw, 0] by each quaternion using the rotation matrix second column:
-    # R[:,1] = [2(qx*qy - qw*qz), 1 - 2(qx^2 + qz^2), 2(qy*qz + qw*qx)]
-    lat = np.column_stack([
-        hw * 2.0 * (qx * qy - qw * qz),
-        hw * (1.0 - 2.0 * (qx ** 2 + qz ** 2)),
-        hw * 2.0 * (qy * qz + qw * qx),
-    ])
+    lat = _rotate_vectors_by_quat(qx, qy, qz, qw, 0.0, hw, 0.0)
 
     ox, oy, oz = float(offset[0]), float(offset[1]), float(offset[2])
     if ox == 0.0 and oy == 0.0 and oz == 0.0:
         off = 0.0
     else:
-        # Full rotation matrix applied to offset vector
-        off = np.column_stack([
-            ox * (1 - 2 * (qy ** 2 + qz ** 2)) + oy * 2 * (qx * qy - qw * qz) + oz * 2 * (qx * qz + qw * qy),
-            ox * 2 * (qx * qy + qw * qz) + oy * (1 - 2 * (qx ** 2 + qz ** 2)) + oz * 2 * (qy * qz - qw * qx),
-            ox * 2 * (qx * qz - qw * qy) + oy * 2 * (qy * qz + qw * qx) + oz * (1 - 2 * (qx ** 2 + qy ** 2)),
-        ])
+        off = _rotate_vectors_by_quat(qx, qy, qz, qw, ox, oy, oz)
 
     left = pos + off + lat
     right = pos + off - lat

@@ -1,9 +1,10 @@
 from lanelet2_generator.readers.base import load_path
 from lanelet2_generator.readers.csv import read_csv
+from lanelet2_generator.readers.pcd import read_pcd
 from lanelet2_generator.readers.ply import read_offset, read_ply
 from lanelet2_generator.readers.yaml_waypoints import read_yaml
 
-__all__ = ["load_path", "read_bag", "read_csv", "read_offset", "read_ply", "read_yaml"]
+__all__ = ["load_path", "read_bag", "read_csv", "read_pcd", "read_offset", "read_ply", "read_yaml"]
 
 
 def __getattr__(name):
