@@ -8,7 +8,14 @@ from pathlib import Path
 import yaml
 
 from lanelet2_generator.readers import load_path, read_csv, read_pcd, read_ply, read_offset, read_yaml
-from lanelet2_generator.filtering import filter_path, filter_by_min_distance, filter_downsample
+from lanelet2_generator.filtering import (
+    filter_backward_segments,
+    filter_micro_loops,
+    filter_path,
+    filter_by_min_distance,
+    filter_downsample,
+    filter_stationary_clusters,
+)
 from lanelet2_generator.geometry import (
     apply_trajectory_z_offset,
     pose2line,
@@ -31,6 +38,9 @@ __all__ = [
     "read_ply",
     "read_offset",
     "read_yaml",
+    "filter_backward_segments",
+    "filter_micro_loops",
+    "filter_stationary_clusters",
     "filter_path",
     "filter_by_min_distance",
     "filter_downsample",
@@ -123,6 +133,16 @@ def generate(
     speed_limit=30,
     bidirectional=True,
     smooth_window=0,
+    remove_backward=True,
+    backward_lookback=8,
+    backward_dot_threshold=-0.05,
+    backward_min_segment_m=0.1,
+    collapse_stationary=True,
+    stationary_radius_m=0.3,
+    stationary_min_cluster_points=3,
+    remove_micro_loops=True,
+    micro_loop_max_leg_m=1.5,
+    micro_loop_dot_threshold=0.0,
     output_file=None,
 ):
     """
@@ -238,7 +258,27 @@ def generate(
         poses = apply_trajectory_z_offset(poses, tz)
         print(f"Applied trajectory z offset [m]: {tz}")
 
-    poses = filter_path(poses, min_distance=min_distance, step=step)
+    poses, cleanup_stats = filter_path(
+        poses,
+        min_distance=min_distance,
+        step=step,
+        remove_backward=remove_backward,
+        backward_lookback=backward_lookback,
+        backward_dot_threshold=backward_dot_threshold,
+        backward_min_segment_m=backward_min_segment_m,
+        collapse_stationary=collapse_stationary,
+        stationary_radius_m=stationary_radius_m,
+        stationary_min_cluster_points=stationary_min_cluster_points,
+        remove_micro_loops=remove_micro_loops,
+        micro_loop_max_leg_m=micro_loop_max_leg_m,
+        micro_loop_dot_threshold=micro_loop_dot_threshold,
+    )
+    if cleanup_stats["stationary_removed"] > 0:
+        print(f"Collapsed {cleanup_stats['stationary_removed']} stationary jitter pose(s)")
+    if cleanup_stats["micro_loop_removed"] > 0:
+        print(f"Removed {cleanup_stats['micro_loop_removed']} micro-loop pose(s)")
+    if cleanup_stats["backward_removed"] > 0:
+        print(f"Removed {cleanup_stats['backward_removed']} backward-driving pose(s)")
     poses = smooth_path(poses, window=smooth_window)
 
     return to_lanelet(

@@ -73,6 +73,33 @@ def main():
         help="interpolating smoothing subdivisions per segment; 0 disables",
     )
     parser.add_argument(
+        "--no-remove-backward",
+        dest="remove_backward",
+        action="store_false",
+        default=True,
+        help="keep short reverse-driving segments (default: remove them)",
+    )
+    parser.add_argument(
+        "--no-collapse-stationary",
+        dest="collapse_stationary",
+        action="store_false",
+        default=True,
+        help="keep dense poses while stopped (default: collapse jitter)",
+    )
+    parser.add_argument(
+        "--stationary-radius-m",
+        type=float,
+        default=0.3,
+        help="stationary cluster radius [m] (default: 0.3)",
+    )
+    parser.add_argument(
+        "--no-remove-micro-loops",
+        dest="remove_micro_loops",
+        action="store_false",
+        default=True,
+        help="keep tiny hairpin folds (default: remove them)",
+    )
+    parser.add_argument(
         "--no-bidirectional",
         dest="bidirectional",
         action="store_false",
@@ -133,6 +160,10 @@ def main():
         speed_limit=args.speed_limit,
         bidirectional=args.bidirectional,
         smooth_window=args.smooth_window,
+        remove_backward=args.remove_backward,
+        collapse_stationary=args.collapse_stationary,
+        stationary_radius_m=args.stationary_radius_m,
+        remove_micro_loops=args.remove_micro_loops,
         output_file=args.output_file,
     )
     print(f"Saved: {result}")
