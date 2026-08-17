@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 IMAGE_NAME="${IMAGE_NAME:-lanelet2-generator:latest}"
 
+# shellcheck source=common.sh
+source "${SCRIPT_DIR}/common.sh"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -60,7 +63,7 @@ if [[ "${OUTPUT_PATH}" != /* ]]; then
 fi
 mkdir -p "${OUTPUT_PATH}"
 
-docker build -f "${REPO_ROOT}/docker/Dockerfile" -t "${IMAGE_NAME}" "${REPO_ROOT}"
+ensure_docker_image "${REPO_ROOT}" "${IMAGE_NAME}"
 
 docker run --rm \
   -v "${OUTPUT_PATH}:/output" \

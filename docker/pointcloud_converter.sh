@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 IMAGE_NAME="${IMAGE_NAME:-lanelet2-generator:latest}"
 
+# shellcheck source=common.sh
+source "${SCRIPT_DIR}/common.sh"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -289,7 +292,7 @@ if [[ -n "${MAP_PROJECTOR_INFO}" ]]; then
   MAP_ARGS=(--map-projector-info "/mapinfo/${MAP_BASE}")
 fi
 
-docker build -f "${REPO_ROOT}/docker/Dockerfile" -t "${IMAGE_NAME}" "${REPO_ROOT}"
+ensure_docker_image "${REPO_ROOT}" "${IMAGE_NAME}"
 
 # Always write PCD + pcd_tiles under /output (never /input), even when both
 # map to the same host directory.

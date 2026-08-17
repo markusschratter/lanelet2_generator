@@ -5,6 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 IMAGE_NAME="${IMAGE_NAME:-lanelet2-generator:latest}"
 
+# shellcheck source=common.sh
+source "${SCRIPT_DIR}/common.sh"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -125,7 +128,7 @@ CONTAINER_INPUTS=("${_DOCKER_PATHS[@]:0:${#_DOCKER_PATHS[@]}-2}")
 COMMON="${_DOCKER_PATHS[-1]}"
 CONTAINER_OUT="${_DOCKER_PATHS[-2]}"
 
-docker build -f "${REPO_ROOT}/docker/Dockerfile" -t "${IMAGE_NAME}" "${REPO_ROOT}"
+ensure_docker_image "${REPO_ROOT}" "${IMAGE_NAME}"
 
 mkdir -p "$(dirname "${ABS_OUT}")"
 
